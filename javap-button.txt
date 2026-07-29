@@ -1,0 +1,17 @@
+﻿Compiled from "Button.java"
+public abstract class net.minecraft.client.gui.components.Button extends net.minecraft.client.gui.components.AbstractButton {
+  public static final int SMALL_WIDTH;
+  public static final int DEFAULT_WIDTH;
+  public static final int BIG_WIDTH;
+  public static final int DEFAULT_HEIGHT;
+  public static final int DEFAULT_SPACING;
+  protected static final net.minecraft.client.gui.components.Button$CreateNarration DEFAULT_NARRATION;
+  protected final net.minecraft.client.gui.components.Button$OnPress onPress;
+  protected final net.minecraft.client.gui.components.Button$CreateNarration createNarration;
+  public static net.minecraft.client.gui.components.Button$Builder builder(net.minecraft.network.chat.Component, net.minecraft.client.gui.components.Button$OnPress);
+  protected net.minecraft.client.gui.components.Button(int, int, int, int, net.minecraft.network.chat.Component, net.minecraft.client.gui.components.Button$OnPress, net.minecraft.client.gui.components.Button$CreateNarration);
+  public void onPress(net.minecraft.client.input.InputWithModifiers);
+  protected net.minecraft.network.chat.MutableComponent createNarrationMessage();
+  public void updateWidgetNarration(net.minecraft.client.gui.narration.NarrationElementOutput);
+  static {};
+}

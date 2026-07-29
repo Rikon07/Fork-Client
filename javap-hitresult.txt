@@ -1,0 +1,8 @@
+﻿Compiled from "HitResult.java"
+public abstract class net.minecraft.world.phys.HitResult {
+  protected final net.minecraft.world.phys.Vec3 location;
+  protected net.minecraft.world.phys.HitResult(net.minecraft.world.phys.Vec3);
+  public double distanceTo(net.minecraft.world.entity.Entity);
+  public abstract net.minecraft.world.phys.HitResult$Type getType();
+  public net.minecraft.world.phys.Vec3 getLocation();
+}

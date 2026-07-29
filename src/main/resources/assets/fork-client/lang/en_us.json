@@ -1,0 +1,15 @@
+{
+  "key.categories.fork-client.general": "Fork Client",
+  "key.fork-client.open_gui": "Open Click GUI",
+  "key.fork-client.open_hud_editor": "Open HUD Editor",
+  "key.fork-client.zoom": "Hold Zoom",
+  "key.fork-client.freelook": "Hold Freelook",
+  "key.fork-client.hide_hud": "Toggle Hide HUD",
+  "key.fork-client.camera_path": "Toggle Camera Path Recording",
+  "message.fork-client.movement_denied": "This server has not opted in to movement modifications.",
+  "message.fork-client.rendering_denied": "This server has not opted in to rendering modifications.",
+  "message.fork-client.utility_denied": "This server has not opted in to utility modifications.",
+  "message.fork-client.no_permission": "Feature unavailable: the server has not granted permission.",
+  "message.fork-client.handshake_sent": "Fork Client handshake sent to server.",
+  "message.fork-client.handshake_failed": "Server does not support Fork Client handshake. Some features may be unavailable."
+}

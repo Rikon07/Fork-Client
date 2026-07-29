@@ -1,0 +1,23 @@
+{
+	"required": true,
+	"package": "com.mahidx7.forkclient.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"mixins": [],
+	"client": [
+		"GameRendererMixin",
+		"ClientInputMixin",
+		"VelocityMixin",
+		"ItemInHandRendererMixin",
+		"ScreenEffectRendererMixin",
+		"CameraMixin",
+		"LivingEntityRendererMixin",
+		"ChatComponentMixin",
+		"ChatFilterMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}

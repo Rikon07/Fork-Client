@@ -1,0 +1,31 @@
+﻿Compiled from "ServerData.java"
+public class net.minecraft.client.multiplayer.ServerData {
+  public java.lang.String name;
+  public java.lang.String ip;
+  public net.minecraft.network.chat.Component status;
+  public net.minecraft.network.chat.Component motd;
+  public net.minecraft.network.protocol.status.ServerStatus$Players players;
+  public long ping;
+  public int protocol;
+  public net.minecraft.network.chat.Component version;
+  public java.util.List<net.minecraft.network.chat.Component> playerList;
+  public net.minecraft.client.multiplayer.ServerData(java.lang.String, java.lang.String, net.minecraft.client.multiplayer.ServerData$Type);
+  public net.minecraft.nbt.CompoundTag write();
+  public net.minecraft.client.multiplayer.ServerData$ServerPackStatus getResourcePackStatus();
+  public void setResourcePackStatus(net.minecraft.client.multiplayer.ServerData$ServerPackStatus);
+  public static net.minecraft.client.multiplayer.ServerData read(net.minecraft.nbt.CompoundTag);
+  public byte[] getIconBytes();
+  public void setIconBytes(byte[]);
+  public boolean isLan();
+  public boolean isRealm();
+  public net.minecraft.client.multiplayer.ServerData$Type type();
+  public boolean hasAcceptedCodeOfConduct(java.lang.String);
+  public void acceptCodeOfConduct(java.lang.String);
+  public void clearCodeOfConduct();
+  public void copyNameIconFrom(net.minecraft.client.multiplayer.ServerData);
+  public void copyFrom(net.minecraft.client.multiplayer.ServerData);
+  public net.minecraft.client.multiplayer.ServerData$State state();
+  public void setState(net.minecraft.client.multiplayer.ServerData$State);
+  public static byte[] validateIcon(byte[]);
+  static {};
+}

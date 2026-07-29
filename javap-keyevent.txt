@@ -1,0 +1,11 @@
+﻿Compiled from "KeyEvent.java"
+public final class net.minecraft.client.input.KeyEvent extends java.lang.Record implements net.minecraft.client.input.InputWithModifiers {
+  public net.minecraft.client.input.KeyEvent(int, int, int);
+  public int input();
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public int key();
+  public int scancode();
+  public int modifiers();
+}

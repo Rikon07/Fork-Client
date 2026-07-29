@@ -1,0 +1,4 @@
+﻿Compiled from "ClientModInitializer.java"
+public interface net.fabricmc.api.ClientModInitializer {
+  public abstract void onInitializeClient();
+}

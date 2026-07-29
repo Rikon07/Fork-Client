@@ -1,0 +1,12 @@
+﻿Compiled from "ClientClockManager.java"
+public class net.minecraft.client.ClientClockManager implements net.minecraft.world.clock.ClockManager {
+  private final java.util.Map<net.minecraft.core.Holder<net.minecraft.world.clock.WorldClock>, net.minecraft.client.ClientClockManager$ClockInstance> clocks;
+  private long lastTickGameTime;
+  public net.minecraft.client.ClientClockManager();
+  private net.minecraft.client.ClientClockManager$ClockInstance getInstance(net.minecraft.core.Holder<net.minecraft.world.clock.WorldClock>);
+  public void tick(long);
+  public void handleUpdates(long, java.util.Map<net.minecraft.core.Holder<net.minecraft.world.clock.WorldClock>, net.minecraft.world.clock.ClockNetworkState>);
+  public long getTotalTicks(net.minecraft.core.Holder<net.minecraft.world.clock.WorldClock>);
+  private void lambda$handleUpdates$0(net.minecraft.core.Holder, net.minecraft.world.clock.ClockNetworkState);
+  private static net.minecraft.client.ClientClockManager$ClockInstance lambda$getInstance$0(net.minecraft.core.Holder);
+}

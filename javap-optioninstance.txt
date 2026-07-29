@@ -1,0 +1,23 @@
+﻿Compiled from "OptionInstance.java"
+public final class net.minecraft.client.OptionInstance<T> {
+  public static final net.minecraft.client.OptionInstance$Enum<java.lang.Boolean> BOOLEAN_VALUES;
+  public static final net.minecraft.client.OptionInstance$CaptionBasedToString<java.lang.Boolean> BOOLEAN_TO_STRING;
+  public static net.minecraft.client.OptionInstance<java.lang.Boolean> createBoolean(java.lang.String, boolean, java.util.function.Consumer<java.lang.Boolean>);
+  public static net.minecraft.client.OptionInstance<java.lang.Boolean> createBoolean(java.lang.String, boolean);
+  public static net.minecraft.client.OptionInstance<java.lang.Boolean> createBoolean(java.lang.String, net.minecraft.client.OptionInstance$TooltipSupplier<java.lang.Boolean>, boolean);
+  public static net.minecraft.client.OptionInstance<java.lang.Boolean> createBoolean(java.lang.String, net.minecraft.client.OptionInstance$TooltipSupplier<java.lang.Boolean>, boolean, java.util.function.Consumer<java.lang.Boolean>);
+  public static net.minecraft.client.OptionInstance<java.lang.Boolean> createBoolean(java.lang.String, net.minecraft.client.OptionInstance$TooltipSupplier<java.lang.Boolean>, net.minecraft.client.OptionInstance$CaptionBasedToString<java.lang.Boolean>, boolean, java.util.function.Consumer<java.lang.Boolean>);
+  public net.minecraft.client.OptionInstance(java.lang.String, net.minecraft.client.OptionInstance$TooltipSupplier<T>, net.minecraft.client.OptionInstance$CaptionBasedToString<T>, net.minecraft.client.OptionInstance$ValueSet<T>, T, java.util.function.Consumer<T>);
+  public net.minecraft.client.OptionInstance(java.lang.String, net.minecraft.client.OptionInstance$TooltipSupplier<T>, net.minecraft.client.OptionInstance$CaptionBasedToString<T>, net.minecraft.client.OptionInstance$ValueSet<T>, com.mojang.serialization.Codec<T>, T, java.util.function.Consumer<T>);
+  public static <T> net.minecraft.client.OptionInstance$TooltipSupplier<T> noTooltip();
+  public static <T> net.minecraft.client.OptionInstance$TooltipSupplier<T> cachedConstantTooltip(net.minecraft.network.chat.Component);
+  public net.minecraft.client.gui.components.AbstractWidget createButton(net.minecraft.client.Options);
+  public net.minecraft.client.gui.components.AbstractWidget createButton(net.minecraft.client.Options, int, int, int);
+  public net.minecraft.client.gui.components.AbstractWidget createButton(net.minecraft.client.Options, int, int, int, java.util.function.Consumer<T>);
+  public T get();
+  public com.mojang.serialization.Codec<T> codec();
+  public java.lang.String toString();
+  public void set(T);
+  public net.minecraft.client.OptionInstance$ValueSet<T> values();
+  static {};
+}

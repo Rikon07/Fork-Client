@@ -1,0 +1,22 @@
+﻿Compiled from "ContainerEventHandler.java"
+public interface net.minecraft.client.gui.components.events.ContainerEventHandler extends net.minecraft.client.gui.components.events.GuiEventListener {
+  public abstract java.util.List<? extends net.minecraft.client.gui.components.events.GuiEventListener> children();
+  public default java.util.Optional<net.minecraft.client.gui.components.events.GuiEventListener> getChildAt(double, double);
+  public default boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent, boolean);
+  public default boolean mouseReleased(net.minecraft.client.input.MouseButtonEvent);
+  public default boolean mouseDragged(net.minecraft.client.input.MouseButtonEvent, double, double);
+  public abstract boolean isDragging();
+  public abstract void setDragging(boolean);
+  public default boolean mouseScrolled(double, double, double, double);
+  public default boolean keyPressed(net.minecraft.client.input.KeyEvent);
+  public default boolean keyReleased(net.minecraft.client.input.KeyEvent);
+  public default boolean charTyped(net.minecraft.client.input.CharacterEvent);
+  public default boolean preeditUpdated(net.minecraft.client.input.PreeditEvent);
+  public default net.minecraft.client.gui.navigation.ScreenRectangle getBorderForArrowNavigation(net.minecraft.client.gui.navigation.ScreenDirection);
+  public abstract net.minecraft.client.gui.components.events.GuiEventListener getFocused();
+  public abstract void setFocused(net.minecraft.client.gui.components.events.GuiEventListener);
+  public default void setFocused(boolean);
+  public default boolean isFocused();
+  public default net.minecraft.client.gui.ComponentPath getCurrentFocusPath();
+  public default net.minecraft.client.gui.ComponentPath nextFocusPath(net.minecraft.client.gui.navigation.FocusNavigationEvent);
+}

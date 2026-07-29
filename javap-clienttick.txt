@@ -1,0 +1,8 @@
+﻿Compiled from "ClientTickEvents.java"
+public final class net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents {
+  public static final net.fabricmc.fabric.api.event.Event<net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents$StartTick> START_CLIENT_TICK;
+  public static final net.fabricmc.fabric.api.event.Event<net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents$EndTick> END_CLIENT_TICK;
+  public static final net.fabricmc.fabric.api.event.Event<net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents$StartLevelTick> START_LEVEL_TICK;
+  public static final net.fabricmc.fabric.api.event.Event<net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents$EndLevelTick> END_LEVEL_TICK;
+  static {};
+}

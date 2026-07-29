@@ -1,0 +1,184 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+repositories {
+	// Add repositories to retrieve artifacts from in here.
+	// You should only use this when depending on other mods because
+	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
+	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
+	// for more information about repositories.
+}
+
+dependencies {
+	// To change the versions see the gradle.properties file
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+	// Fabric API. This is technically optional, but you probably want it anyway.
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 21
+}
+
+java {
+	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+	// if it is present.
+	// If you remove this line, sources will not be generated.
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+}
+
+jar {
+	def projectName = project.name
+	inputs.property "projectName", projectName
+
+	from("LICENSE") {
+		rename { "${it}_$projectName"}
+	}
+}
+
+// configure the maven publication
+publishing {
+	publications {
+		create("mavenJava", MavenPublication) {
+			from components.java
+		}
+	}
+
+	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+	repositories {
+		// Add repositories to publish to here.
+		// Notice: This block does NOT have the same function as the block in the top level.
+		// The repositories here will be used for publishing your artifact, not for
+		// retrieving dependencies.
+	}
+}
+
+tasks.register('printClasspath') {
+    doLast {
+        configurations.compileClasspath.each { file ->
+            println file.absolutePath
+        }
+    }
+}
+
+def findMinecraftJar() {
+    def loomCache = file("${project.projectDir}/.gradle/loom-cache/minecraftMaven")
+    if (loomCache.exists()) {
+        def jars = loomCache.listFiles()?.findAll { it.name.endsWith('.jar') } ?: []
+        // Try to find the merged minecraft jar
+        def mergedJar = jars.find { it.name.contains('minecraft-merged') }
+        if (mergedJar != null) return mergedJar
+        // Fall back to any jar in a net/minecraft subdirectory
+        return loomCache.listFiles()?.findResult { dir ->
+            if (dir.isDirectory()) {
+                def sub = new File(dir, "net/minecraft")
+                if (sub.exists()) {
+                    sub.listFiles()?.findResult { versionDir ->
+                        versionDir.listFiles()?.find { it.name.endsWith('.jar') && it.name.contains('minecraft') }
+                    }
+                }
+            }
+        }
+    }
+    return null
+}
+
+tasks.register('findHurtTime') {
+    doLast {
+        def jarPath = findMinecraftJar()
+        if (jarPath == null || !jarPath.exists()) {
+            println "Could not find Minecraft jar in loom cache"
+            return
+        }
+        println "Using jar: ${jarPath.absolutePath}"
+        new java.util.zip.ZipFile(jarPath).withCloseable { zipFile ->
+            zipFile.entries().each { entry ->
+                if (entry.name.startsWith("net/minecraft/client/") && entry.name.endsWith(".class")) {
+                    def bytes = zipFile.getInputStream(entry).bytes
+                    def content = new String(bytes, "ISO-8859-1")
+                    if (content.contains("hurtTime")) {
+                        println entry.name
+                    }
+                }
+            }
+        }
+    }
+}
+
+tasks.register('findHurtTimeMethods') {
+    doLast {
+        def jarPath = findMinecraftJar()
+        if (jarPath == null || !jarPath.exists()) {
+            println "Could not find Minecraft jar in loom cache"
+            return
+        }
+        println "Using jar: ${jarPath.absolutePath}"
+        new java.util.zip.ZipFile(jarPath).withCloseable { zipFile ->
+            ["net/minecraft/client/Camera.class", "net/minecraft/client/renderer/GameRenderer.class"].each { entryName ->
+                def entry = zipFile.getEntry(entryName)
+                if (entry == null) {
+                    println "Entry not found: ${entryName}"
+                    return
+                }
+                def bytes = zipFile.getInputStream(entry).bytes
+                def reader = new org.objectweb.asm.ClassReader(bytes)
+                println "=== Methods in ${entryName} ==="
+                reader.accept(new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                    @Override
+                    org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                        return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                            @Override
+                            void visitFieldInsn(int opcode, String owner, String fieldName, String fieldDescriptor) {
+                                if (fieldName == "hurtTime") {
+                                    println name + descriptor
+                                }
+                            }
+                        }
+                    }
+                }, 0)
+            }
+        }
+    }
+}
+
+tasks.register('findOutlineRef') {
+    doLast {
+        def jarPath = findMinecraftJar()
+        if (jarPath == null || !jarPath.exists()) {
+            println "Could not find Minecraft jar in loom cache"
+            return
+        }
+        println "Using jar: ${jarPath.absolutePath}"
+        new java.util.zip.ZipFile(jarPath).withCloseable { zipFile ->
+            zipFile.entries().each { entry ->
+                if (entry.name.startsWith("net/minecraft/client/") && entry.name.endsWith(".class")) {
+                    def bytes = zipFile.getInputStream(entry).bytes
+                    def content = new String(bytes, "ISO-8859-1")
+                    if (content.contains("renderHitOutline") || content.contains("drawBlockOutline") || content.contains("BlockOutline")) {
+                        println entry.name
+                    }
+                }
+            }
+        }
+    }
+}

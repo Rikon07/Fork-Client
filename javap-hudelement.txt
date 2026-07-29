@@ -1,0 +1,4 @@
+﻿Compiled from "HudElement.java"
+public interface net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement {
+  public abstract void extractRenderState(net.minecraft.client.gui.GuiGraphicsExtractor, net.minecraft.client.DeltaTracker);
+}

@@ -1,0 +1,6 @@
+META-INF/jars/fabric-key-mapping-api-v1-2.0.4+e2bdee784c.jar
+META-INF/jars/fabric-renderer-api-v1-13.0.5+c80601bb4c.jar
+META-INF/jars/fabric-renderer-indigo-8.1.2+1403e82c4c.jar
+META-INF/jars/fabric-rendering-fluids-v1-6.0.1+d871b99e4c.jar
+META-INF/jars/fabric-rendering-v1-23.1.2+1403e82c4c.jar
+META-INF/jars/fabric-screen-api-v1-5.0.1+d871b99e4c.jar

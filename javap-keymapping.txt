@@ -1,0 +1,35 @@
+﻿Compiled from "KeyMapping.java"
+public class net.minecraft.client.KeyMapping implements java.lang.Comparable<net.minecraft.client.KeyMapping> {
+  protected com.mojang.blaze3d.platform.InputConstants$Key key;
+  public static void click(com.mojang.blaze3d.platform.InputConstants$Key);
+  public static void set(com.mojang.blaze3d.platform.InputConstants$Key, boolean);
+  public static void setAll();
+  public static void releaseAll();
+  public static void restoreToggleStatesOnScreenClosed();
+  public static void resetToggleKeys();
+  public static void resetMapping();
+  public net.minecraft.client.KeyMapping(java.lang.String, int, net.minecraft.client.KeyMapping$Category);
+  public net.minecraft.client.KeyMapping(java.lang.String, com.mojang.blaze3d.platform.InputConstants$Type, int, net.minecraft.client.KeyMapping$Category);
+  public net.minecraft.client.KeyMapping(java.lang.String, com.mojang.blaze3d.platform.InputConstants$Type, int, net.minecraft.client.KeyMapping$Category, int);
+  public boolean isDown();
+  public net.minecraft.client.KeyMapping$Category getCategory();
+  public boolean consumeClick();
+  protected void release();
+  protected boolean shouldSetOnIngameFocus();
+  public java.lang.String getName();
+  public com.mojang.blaze3d.platform.InputConstants$Key getDefaultKey();
+  public void setKey(com.mojang.blaze3d.platform.InputConstants$Key);
+  public int compareTo(net.minecraft.client.KeyMapping);
+  public static java.util.function.Supplier<net.minecraft.network.chat.Component> createNameSupplier(java.lang.String);
+  public boolean same(net.minecraft.client.KeyMapping);
+  public boolean isUnbound();
+  public boolean matches(net.minecraft.client.input.KeyEvent);
+  public boolean matchesMouse(net.minecraft.client.input.MouseButtonEvent);
+  public net.minecraft.network.chat.Component getTranslatedKeyMessage();
+  public boolean isDefault();
+  public java.lang.String saveString();
+  public void setDown(boolean);
+  public static net.minecraft.client.KeyMapping get(java.lang.String);
+  public int compareTo(java.lang.Object);
+  static {};
+}

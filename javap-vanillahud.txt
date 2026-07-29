@@ -1,0 +1,27 @@
+﻿Compiled from "VanillaHudElements.java"
+public final class net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements {
+  public static final net.minecraft.resources.Identifier MISC_OVERLAYS;
+  public static final net.minecraft.resources.Identifier CROSSHAIR;
+  public static final net.minecraft.resources.Identifier SPECTATOR_MENU;
+  public static final net.minecraft.resources.Identifier HOTBAR;
+  public static final net.minecraft.resources.Identifier ARMOR_BAR;
+  public static final net.minecraft.resources.Identifier HEALTH_BAR;
+  public static final net.minecraft.resources.Identifier FOOD_BAR;
+  public static final net.minecraft.resources.Identifier AIR_BAR;
+  public static final net.minecraft.resources.Identifier MOUNT_HEALTH;
+  public static final net.minecraft.resources.Identifier INFO_BAR;
+  public static final net.minecraft.resources.Identifier EXPERIENCE_LEVEL;
+  public static final net.minecraft.resources.Identifier HELD_ITEM_TOOLTIP;
+  public static final net.minecraft.resources.Identifier SPECTATOR_TOOLTIP;
+  public static final net.minecraft.resources.Identifier MOB_EFFECTS;
+  public static final net.minecraft.resources.Identifier BOSS_BAR;
+  public static final net.minecraft.resources.Identifier SLEEP;
+  public static final net.minecraft.resources.Identifier DEMO_TIMER;
+  public static final net.minecraft.resources.Identifier SCOREBOARD;
+  public static final net.minecraft.resources.Identifier OVERLAY_MESSAGE;
+  public static final net.minecraft.resources.Identifier TITLE_AND_SUBTITLE;
+  public static final net.minecraft.resources.Identifier CHAT;
+  public static final net.minecraft.resources.Identifier PLAYER_LIST;
+  public static final net.minecraft.resources.Identifier SUBTITLES;
+  static {};
+}
