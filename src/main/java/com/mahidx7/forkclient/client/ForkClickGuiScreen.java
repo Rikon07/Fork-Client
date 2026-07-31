@@ -820,8 +820,8 @@ public class ForkClickGuiScreen extends Screen {
 			}
 
 			// Waypoint delete buttons
-			// layout: base + titleH + 26 (button+gap) + 1 (sep) + 8 (gap) = base + titleH + 35
-			int ry = base + titleH + 26 + 1 + 8;
+			// layout: base + titleH + 26 (button+gap) + 8 (gap incl. separator) = base + titleH + 34
+			int ry = base + titleH + 26 + 8;
 			List<ForkClientController.Waypoint> waypoints = ctrl.getWaypoints();
 			int delSz = 16;
 			int rowH  = 40;

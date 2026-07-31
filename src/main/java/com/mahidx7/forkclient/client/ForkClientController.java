@@ -49,6 +49,7 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.gizmos.Gizmos;
 import net.minecraft.gizmos.GizmoStyle;
+import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
 public final class ForkClientController {
@@ -101,6 +102,10 @@ public final class ForkClientController {
 	private int storedFov;
 	private float freelookYaw;
 	private float freelookPitch;
+	private float freelookOriginalYaw;
+	private float freelookOriginalPitch;
+	private double lastFreelookMouseX;
+	private double lastFreelookMouseY;
 	private boolean freelooking;
 	private boolean toggleSneakLatched;
 	private boolean lastAttackDown;
@@ -141,6 +146,7 @@ public final class ForkClientController {
 	private float cinematicPitch;
 	private float cinematicRoll;
 	private float cinematicSpeed;
+	private boolean cinematicActive;
 	private boolean hudHidden;
 	private boolean screenshotHudHidden;
 	private boolean timelapseRunning;
@@ -447,6 +453,9 @@ public final class ForkClientController {
 			this.autoGgSent = false;
 			this.autoChatMessageIndex = 0;
 			this.nextAutoChatMessageAt = System.currentTimeMillis() + AUTO_CHAT_JOIN_DELAY_MS;
+			if (this.freelooking) {
+				restoreFreelook(client);
+			}
 		}
 	}
 
@@ -575,8 +584,15 @@ public final class ForkClientController {
 		}
 
 		// Cinematic camera
-		if (isModuleEnabled("cinematic_camera") && FeaturePermissions.canUseRendering()) {
-			float speed = getModuleFloatSetting("cinematic_camera", "speed", 1.0F);
+		boolean cinematicOn = isModuleEnabled("cinematic_camera") && FeaturePermissions.canUseRendering();
+		if (cinematicOn && !this.cinematicActive) {
+			this.cinematicActive = true;
+			this.cinematicYaw = client.player.getYRot();
+			this.cinematicPitch = client.player.getXRot();
+		} else if (!cinematicOn && this.cinematicActive) {
+			this.cinematicActive = false;
+		}
+		if (cinematicOn) {
 			float sensitivity = getModuleFloatSetting("cinematic_camera", "smoothing", 0.5F);
 			LocalPlayer player = client.player;
 			float yaw = player.getYRot();
@@ -776,7 +792,11 @@ public final class ForkClientController {
 	}
 
 	private void applyNoWeather(Minecraft client) {
-		if (client.level == null) return;
+		if (client.level == null) {
+			this.noWeatherActive = false;
+			this.savedDimension = null;
+			return;
+		}
 		if (isModuleEnabled("no_weather") && FeaturePermissions.canUseRendering()) {
 			String currentDim = client.level.dimension().identifier().toString();
 			if (!this.noWeatherActive || !currentDim.equals(this.savedDimension)) {
@@ -813,7 +833,7 @@ public final class ForkClientController {
 				bestSlot = i;
 			}
 		}
-		if (bestSlot >= 0 && bestSpeed > 1.0F) {
+		if (bestSlot >= 0 && bestSpeed > 1.0F && bestSlot != client.player.getInventory().getSelectedSlot()) {
 			client.player.getInventory().setSelectedSlot(bestSlot);
 		}
 	}
@@ -888,12 +908,22 @@ public final class ForkClientController {
 		if (keyDown && !this.freelooking) {
 			LocalPlayer player = client.player;
 			if (player != null) {
-				this.freelookYaw = player.getYRot();
-				this.freelookPitch = player.getXRot();
+				this.freelookOriginalYaw = player.getYRot();
+				this.freelookOriginalPitch = player.getXRot();
+				this.freelookYaw = this.freelookOriginalYaw;
+				this.freelookPitch = this.freelookOriginalPitch;
+				this.lastFreelookMouseX = client.mouseHandler.xpos();
+				this.lastFreelookMouseY = client.mouseHandler.ypos();
 				this.freelooking = true;
 			}
 		} else if (!keyDown && this.freelooking) {
 			restoreFreelook(client);
+		}
+
+		if (this.freelooking && client.player != null) {
+			// Keep the body fixed while freelooking so movement direction does not drift.
+			client.player.setYRot(this.freelookOriginalYaw);
+			client.player.setXRot(this.freelookOriginalPitch);
 		}
 	}
 
@@ -903,8 +933,8 @@ public final class ForkClientController {
 		}
 		LocalPlayer player = client.player;
 		if (player != null) {
-			player.setYRot(this.freelookYaw);
-			player.setXRot(this.freelookPitch);
+			player.setYRot(this.freelookOriginalYaw);
+			player.setXRot(this.freelookOriginalPitch);
 		}
 		this.freelooking = false;
 	}
@@ -919,6 +949,29 @@ public final class ForkClientController {
 
 	public float getFreelookPitch() {
 		return this.freelookPitch;
+	}
+
+	public void updateFreelookMouse() {
+		if (!this.freelooking) {
+			return;
+		}
+		Minecraft client = Minecraft.getInstance();
+		if (client.player == null) {
+			return;
+		}
+		double mouseX = client.mouseHandler.xpos();
+		double mouseY = client.mouseHandler.ypos();
+		double dx = mouseX - this.lastFreelookMouseX;
+		double dy = mouseY - this.lastFreelookMouseY;
+		this.lastFreelookMouseX = mouseX;
+		this.lastFreelookMouseY = mouseY;
+		if (dx == 0.0D && dy == 0.0D) {
+			return;
+		}
+		double sensitivity = client.options.sensitivity().get().doubleValue() * 0.6 + 0.2;
+		sensitivity = sensitivity * sensitivity * sensitivity * 8.0 * 0.15;
+		this.freelookYaw += (float) (dx * sensitivity);
+		this.freelookPitch = (float) Mth.clamp(this.freelookPitch - (float) (dy * sensitivity), -90.0F, 90.0F);
 	}
 
 	private void updateClickCounters(Minecraft client) {

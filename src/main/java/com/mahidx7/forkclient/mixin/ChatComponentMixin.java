@@ -34,7 +34,8 @@ public class ChatComponentMixin {
         }
 
         String text = message.getString();
-        if (text.startsWith("[") && text.length() > 6 && text.charAt(6) == ']') {
+        if (text.startsWith("[") && text.length() > 6 && text.charAt(6) == ']'
+            && text.charAt(2) == ':' && text.charAt(5) == ':') {
             return message;
         }
 

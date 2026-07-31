@@ -24,6 +24,7 @@ public class CameraMixin {
             return;
         }
 
+        ctrl.updateFreelookMouse();
         this.setRotation(ctrl.getFreelookYaw(), ctrl.getFreelookPitch());
     }
 }

@@ -14,7 +14,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
  * before any client features activate.
  *
  * <p>The body carries the mod version so the server can make compatibility
- * decisions.  The wire format is a single VarInt-prefixed string.
+ * decisions.  The wire format is a single length-prefixed (int) string.
  */
 public record ForkClientHandshakePayload(String modVersion) implements CustomPacketPayload {
 
