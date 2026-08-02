@@ -159,6 +159,9 @@ public class ForkHudEditorScreen extends Screen {
 	@Override
 	public boolean keyPressed(KeyEvent event) {
 		if (event.key() == GLFW.GLFW_KEY_ESCAPE || event.key() == GLFW.GLFW_KEY_H) {
+			if (event.key() == GLFW.GLFW_KEY_H) {
+				ForkClientController.INSTANCE.consumeHudEditorKeyClick();
+			}
 			this.minecraft.gui.setScreen(null);
 			return true;
 		}

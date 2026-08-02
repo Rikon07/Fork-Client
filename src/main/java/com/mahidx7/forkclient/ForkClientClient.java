@@ -26,7 +26,7 @@ public class ForkClientClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-            FeaturePermissions.reset();
+            client.execute(FeaturePermissions::reset);
         });
 
         ForkClientController.INSTANCE.initialize();

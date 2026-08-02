@@ -44,7 +44,12 @@ public class VelocityMixin {
         double reducedY = originalY * verticalMultiplier;
         double reducedZ = originalZ * horizontalMultiplier;
 
-        client.player.setDeltaMovement(reducedX, reducedY, reducedZ);
+        // Vanilla defers the actual velocity write to the client (render) thread
+        // via PacketUtils.ensureRunningOnSameThread, which runs after this HEAD
+        // inject. Cancelling here would otherwise mutate the player entity from
+        // the network thread, so re-dispatch the write to the client thread.
+        // execute() runs inline when already on the client thread.
+        client.execute(() -> client.player.setDeltaMovement(reducedX, reducedY, reducedZ));
 
         ci.cancel();
     }

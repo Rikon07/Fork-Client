@@ -10,11 +10,14 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -43,6 +46,7 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
@@ -76,6 +80,30 @@ public final class ForkClientController {
 		"good luck everyone",
 		"have a great game"
 	);
+
+	// ── Performance & caching state ────────────────────────────────────────
+	// Version counters let cheap checks decide when cached data is stale,
+	// so expensive work (string building, font measurement, block lookups)
+	// happens at most once per client tick or per state change instead of
+	// once per rendered frame.
+	private long layoutVersion;
+	private final Map<String, WidgetLayout> widgetLayoutCache = new HashMap<>();
+	private long moduleStateGeneration;
+	private long enabledTitlesGeneration = -1;
+	private List<String> cachedEnabledTitles = List.of();
+
+	private static final long MINIMAP_CACHE_MS = 1000L;
+	private static final int MINIMAP_GRID = 32;
+	private long minimapCacheTime;
+	private int minimapCacheX;
+	private int minimapCacheY;
+	private int minimapCacheZ;
+	private Level minimapCacheLevel;
+	private int[] minimapCacheColors;
+	private final ArrayList<net.minecraft.world.entity.Entity> minimapEntityBuffer = new ArrayList<>();
+
+	private final GridOverlayCache gridOverlayCache = new GridOverlayCache();
+	private final ChunkBorderCache chunkBorderCache = new ChunkBorderCache();
 
 	private final List<ModuleDefinition> modules = new ArrayList<>();
 	private final Map<String, ModuleDefinition> modulesById = new LinkedHashMap<>();
@@ -231,7 +259,7 @@ public final class ForkClientController {
 			float guiW = extractor.guiWidth();
 			extractor.pose().translate(guiW / 2.0F, 0.0F);
 			extractor.pose().scale(0.85F, 0.85F);
-			extractor.pose().translate(-guiW / 2.0F, -20.0F / 0.85F);
+			extractor.pose().translate(-guiW / 2.0F, 0.0F);
 			original.extractRenderState(extractor, deltaTracker);
 			extractor.pose().popMatrix();
 		});
@@ -418,6 +446,12 @@ public final class ForkClientController {
 			return;
 		}
 
+		// Bump the HUD layout version so per-frame cached widget text/sizes are
+		// rebuilt exactly once per tick (20 Hz). Widget data (player position,
+		// FPS, ping, potion timers...) only changes at tick rate, so rendering
+		// the cached result is visually identical to recomputing every frame.
+		this.layoutVersion++;
+
 		while (this.openGuiKey.consumeClick()) {
 			toggleClickGui(client);
 		}
@@ -528,8 +562,10 @@ public final class ForkClientController {
 
 		// Hide HUD hotkey toggle
 		while (this.hideHudKey.consumeClick()) {
-			this.hudHidden = !this.hudHidden;
-			pushUtilityNotification("HUD " + (this.hudHidden ? "hidden" : "shown"), PANEL_OUTLINE);
+			if (isModuleEnabled("hide_hud_hotkey")) {
+				this.hudHidden = !this.hudHidden;
+				pushUtilityNotification("HUD " + (this.hudHidden ? "hidden" : "shown"), PANEL_OUTLINE);
+			}
 		}
 
 		// Camera path key toggle
@@ -732,6 +768,15 @@ public final class ForkClientController {
 		client.gui.setScreen(new ForkHudEditorScreen());
 	}
 
+	/**
+	 * Consumes any pending click on the HUD editor hotkey (H) so that closing
+	 * the editor from its own keyPressed handler doesn't immediately reopen it
+	 * when the same click is picked up by END_CLIENT_TICK later in the frame.
+	 */
+	public void consumeHudEditorKeyClick() {
+		this.openHudEditorKey.consumeClick();
+	}
+
 	private void applyFullbright(Minecraft client) {
 		if (isModuleEnabled("fullbright") && FeaturePermissions.canUseRendering()) {
 			if (!this.gammaCaptured) {
@@ -739,7 +784,11 @@ public final class ForkClientController {
 				this.gammaCaptured = true;
 			}
 
-			client.options.gamma().set(1000.0D);
+			// Only write the option when it changed; avoids firing the option's
+			// listeners (and related work) on every tick while already active.
+			if (client.options.gamma().get() != 1000.0D) {
+				client.options.gamma().set(1000.0D);
+			}
 			return;
 		}
 
@@ -755,7 +804,9 @@ public final class ForkClientController {
 				this.zoomApplied = true;
 			}
 
-			client.options.fov().set(30);
+			if (client.options.fov().get() != 30) {
+				client.options.fov().set(30);
+			}
 			return;
 		}
 
@@ -1083,13 +1134,18 @@ public final class ForkClientController {
 				return;
 			}
 
+			// Only layout/clamp widgets that are actually visible. Each widget's
+			// text and size come from a tick-based cache so the per-frame cost of
+			// the HUD loop is a map lookup instead of String.format + font
+			// measurement for every widget on every frame.
 			for (WidgetState widget : this.widgets) {
-				clampWidgetToViewport(client, widget);
 				if (!widget.enabled()) {
 					continue;
 				}
 
-				renderWidget(extractor, client, widget, false, false);
+				WidgetLayout layout = getWidgetLayout(client, widget);
+				clampWidgetToViewport(client, widget);
+				renderWidget(extractor, client, widget, layout, false, false);
 			}
 
 			if (isModuleEnabled("custom_crosshair") && FeaturePermissions.canUseRendering()) {
@@ -1112,8 +1168,9 @@ public final class ForkClientController {
 			Minecraft client = Minecraft.getInstance();
 			for (WidgetState widget : this.widgets) {
 				clampWidgetToViewport(client, widget);
+				WidgetLayout layout = getWidgetLayout(client, widget);
 				boolean hovered = isWithinWidget(client, widget, mouseX, mouseY);
-				renderWidget(extractor, client, widget, true, hovered || Objects.equals(widget, dragging));
+				renderWidget(extractor, client, widget, layout, true, hovered || Objects.equals(widget, dragging));
 			}
 
 			Component hint = Component.literal("Left click to drag widgets. Right click toggles visibility.");
@@ -1126,10 +1183,10 @@ public final class ForkClientController {
 		}
 	}
 
-	private void renderWidget(GuiGraphicsExtractor extractor, Minecraft client, WidgetState widget, boolean editorMode, boolean highlighted) {
+	private void renderWidget(GuiGraphicsExtractor extractor, Minecraft client, WidgetState widget, WidgetLayout layout, boolean editorMode, boolean highlighted) {
 		int x = widget.x();
 		int y = widget.y();
-		Size size = measureWidget(client, widget);
+		Size size = layout.size;
 
 		int outline = highlighted ? PANEL_OUTLINE_HOVER : PANEL_OUTLINE;
 		if (!widget.enabled()) {
@@ -1156,20 +1213,23 @@ public final class ForkClientController {
 			case "keystrokes" -> renderKeystrokes(extractor, client, x, y);
 			case "array_list" -> renderArrayList(extractor, client, x, y, editorMode);
 			case "minimap" -> renderMinimap(extractor, client, x, y);
-			default -> renderTextWidget(extractor, client, widget, x, y, editorMode);
+			default -> renderTextWidget(extractor, client, widget, x, y, editorMode, layout.lines);
 		}
 	}
 
-	private void renderTextWidget(GuiGraphicsExtractor extractor, Minecraft client, WidgetState widget, int x, int y, boolean editorMode) {
-		List<String> lines = getWidgetLines(client, widget);
+	private void renderTextWidget(GuiGraphicsExtractor extractor, Minecraft client, WidgetState widget, int x, int y, boolean editorMode, List<CachedLine> lines) {
 		int lineHeight = client.font.lineHeight + 2;
 
 		if (editorMode) {
 			extractor.text(client.font, Component.literal(widget.title()), x, y - client.font.lineHeight - 4, TEXT_MUTED, false);
 		}
 
+		// Reuse the cached Component for each line instead of allocating a new
+		// Component.literal() every frame; text and width were computed once per
+		// tick in the layout cache.
 		for (int i = 0; i < lines.size(); i++) {
-			extractor.text(client.font, Component.literal(lines.get(i)), x, y + (i * lineHeight), TEXT_PRIMARY, false);
+			CachedLine line = lines.get(i);
+			extractor.text(client.font, line.component, x, y + (i * lineHeight), TEXT_PRIMARY, false);
 		}
 	}
 
@@ -1231,18 +1291,16 @@ public final class ForkClientController {
 		int playerBlockZ = (int) Math.floor(player.getZ());
 		int playerBlockY = (int) Math.floor(player.getY());
 
+		// The block colors behind the minimap are cached and rebuilt only when
+		// the player crosses a block boundary, the level changes, or after a
+		// short timeout. This avoids up to 1024 getBlockState()+getMapColor()
+		// lookups per frame; the per-frame rotation transform still uses the
+		// cached colors so rendering stays smooth and unchanged.
+		ensureMinimapGrid(client, playerBlockX, playerBlockY, playerBlockZ);
+
 		for (int dz = -radius; dz < radius; dz++) {
 			for (int dx = -radius; dx < radius; dx++) {
-				int blockX = playerBlockX + dx;
-				int blockZ = playerBlockZ + dz;
-				BlockPos pos = new BlockPos(blockX, playerBlockY, blockZ);
-				int color;
-				try {
-					color = client.level.getBlockState(pos).getMapColor(client.level, pos).col;
-				} catch (Exception e) {
-					ForkClient.LOGGER.debug("Failed to get map color at {}", pos, e);
-					color = 0xFF000000;
-				}
+				int color = this.minimapCacheColors[(dz + radius) * MINIMAP_GRID + (dx + radius)];
 
 				float rx = (float) dx * pixelsPerBlock;
 				float rz = (float) dz * pixelsPerBlock;
@@ -1263,9 +1321,11 @@ public final class ForkClientController {
 
 		var entities = client.level.entitiesForRendering();
 		if (entities != null) {
-			var entitySnapshot = new ArrayList<net.minecraft.world.entity.Entity>();
-			entities.forEach(entitySnapshot::add);
-			for (var entity : entitySnapshot) {
+			// Reuse a single buffer for the entity snapshot so the minimap does
+			// not allocate a new ArrayList every frame.
+			this.minimapEntityBuffer.clear();
+			entities.forEach(this.minimapEntityBuffer::add);
+			for (var entity : this.minimapEntityBuffer) {
 				if (entity == player) continue;
 				double ex = entity.getX() - player.getX();
 				double ez = entity.getZ() - player.getZ();
@@ -1283,6 +1343,47 @@ public final class ForkClientController {
 		}
 
 		extractor.disableScissor();
+	}
+
+	/**
+	 * Rebuilds the cached minimap block-color grid only when the sampled block
+	 * position, the level, or the refresh timer changes. Sampling 1024 block
+	 * states with map-color lookup is the minimap's most expensive operation, so
+	 * it must not run on every frame.
+	 */
+	private void ensureMinimapGrid(Minecraft client, int px, int py, int pz) {
+		long now = System.currentTimeMillis();
+		if (this.minimapCacheColors != null
+			&& this.minimapCacheLevel == client.level
+			&& this.minimapCacheX == px
+			&& this.minimapCacheY == py
+			&& this.minimapCacheZ == pz
+			&& now - this.minimapCacheTime < MINIMAP_CACHE_MS) {
+			return;
+		}
+
+		int radius = 16;
+		int[] colors = new int[MINIMAP_GRID * MINIMAP_GRID];
+		for (int dz = -radius; dz < radius; dz++) {
+			for (int dx = -radius; dx < radius; dx++) {
+				BlockPos pos = new BlockPos(px + dx, py, pz + dz);
+				int color;
+				try {
+					color = client.level.getBlockState(pos).getMapColor(client.level, pos).col;
+				} catch (Exception e) {
+					ForkClient.LOGGER.debug("Failed to get map color at {}", pos, e);
+					color = 0xFF000000;
+				}
+				colors[(dz + radius) * MINIMAP_GRID + (dx + radius)] = color;
+			}
+		}
+
+		this.minimapCacheColors = colors;
+		this.minimapCacheLevel = client.level;
+		this.minimapCacheX = px;
+		this.minimapCacheY = py;
+		this.minimapCacheZ = pz;
+		this.minimapCacheTime = now;
 	}
 
 	private void renderNotifications(GuiGraphicsExtractor extractor, Minecraft client) {
@@ -1432,67 +1533,93 @@ public final class ForkClientController {
 	}
 
 	private Size measureWidget(Minecraft client, WidgetState widget) {
-		if ("keystrokes".equals(widget.id())) {
-			return new Size(58, 60);
-		}
+		// All widget sizing flows through the tick-based layout cache so this
+		// path (also used by hit-testing in the HUD editor) never re-runs the
+		// expensive line-building/measurement code more than once per tick.
+		return getWidgetLayout(client, widget).size;
+	}
 
-		if ("minimap".equals(widget.id())) {
-			return new Size(64, 64);
+	/**
+	 * Returns the cached layout (text lines + size) for a widget, rebuilding it
+	 * lazily once per client tick. Text lines, their measured pixel widths, and
+	 * the {@link Component} used for rendering are all reused across frames
+	 * while unchanged, which removes per-frame String.format, font measurement
+	 * and Component allocations from the HUD hot path.
+	 */
+	private WidgetLayout getWidgetLayout(Minecraft client, WidgetState widget) {
+		WidgetLayout cached = this.widgetLayoutCache.get(widget.id());
+		if (cached != null && cached.version == this.layoutVersion) {
+			return cached;
 		}
+		WidgetLayout fresh = buildWidgetLayout(client, widget, cached);
+		this.widgetLayoutCache.put(widget.id(), fresh);
+		return fresh;
+	}
 
-		if ("potion_status".equals(widget.id())) {
-			LocalPlayer player = client.player;
-			int effectCount = player != null ? player.getActiveEffects().size() : 0;
-			int lineHeight = client.font.lineHeight + 2;
-			return new Size(80, Math.max(lineHeight, (effectCount + 1) * lineHeight));
+	private WidgetLayout buildWidgetLayout(Minecraft client, WidgetState widget, WidgetLayout old) {
+		int lineHeight = client.font.lineHeight + 2;
+
+		// Fixed-size widgets never need their lines measured; returning an empty
+		// line list means their renderer (keystrokes/minimap) does the work.
+		return switch (widget.id()) {
+			case "keystrokes" -> new WidgetLayout(this.layoutVersion, List.of(), new Size(58, 60));
+			case "minimap" -> new WidgetLayout(this.layoutVersion, List.of(), new Size(64, 64));
+			case "timers" -> new WidgetLayout(this.layoutVersion, buildCachedLines(client, getWidgetLines(client, widget), old), new Size(80, 2 * lineHeight));
+			case "timelapse_info" -> new WidgetLayout(this.layoutVersion, buildCachedLines(client, getWidgetLines(client, widget), old), new Size(120, 2 * lineHeight));
+			case "build_height" -> new WidgetLayout(this.layoutVersion, buildCachedLines(client, getWidgetLines(client, widget), old), new Size(120, 3 * lineHeight));
+			case "measurements" -> new WidgetLayout(this.layoutVersion, buildCachedLines(client, getWidgetLines(client, widget), old), new Size(100, 3 * lineHeight));
+			case "ping_graph" -> new WidgetLayout(this.layoutVersion, buildCachedLines(client, getWidgetLines(client, widget), old), new Size(100, 4 * lineHeight));
+			case "tps_display" -> new WidgetLayout(this.layoutVersion, buildCachedLines(client, getWidgetLines(client, widget), old), new Size(100, 2 * lineHeight));
+			case "potion_status" -> {
+				LocalPlayer player = client.player;
+				int effectCount = player != null ? player.getActiveEffects().size() : 0;
+				yield new WidgetLayout(this.layoutVersion, buildCachedLines(client, getWidgetLines(client, widget), old),
+					new Size(80, Math.max(lineHeight, (effectCount + 1) * lineHeight)));
+			}
+			case "item_counter" -> {
+				LocalPlayer player = client.player;
+				List<String> lines = getWidgetLines(client, widget);
+				int linesCount = player != null ? lines.size() : 1;
+				yield new WidgetLayout(this.layoutVersion, buildCachedLines(client, lines, old),
+					new Size(90, Math.max(1, linesCount) * lineHeight));
+			}
+			case "array_list" -> {
+				List<String> enabledNames = getEnabledModuleTitles();
+				yield new WidgetLayout(this.layoutVersion, List.of(), new Size(
+					ArrayListHudComponent.calculateWidth(client, enabledNames),
+					ArrayListHudComponent.calculateHeight(client, enabledNames)
+				));
+			}
+			default -> {
+				List<String> lines = getWidgetLines(client, widget);
+				List<CachedLine> cachedLines = buildCachedLines(client, lines, old);
+				int width = 0;
+				for (CachedLine line : cachedLines) {
+					width = Math.max(width, line.width);
+				}
+				int height = cachedLines.size() * lineHeight;
+				yield new WidgetLayout(this.layoutVersion, cachedLines, new Size(width + 2, Math.max(height, client.font.lineHeight)));
+			}
+		};
+	}
+
+	/**
+	 * Converts freshly computed widget line strings into reusable cached lines,
+	 * reusing the previous frame's measured width/Component when the text is
+	 * unchanged so no allocation or font measurement happens for static lines.
+	 */
+	private List<CachedLine> buildCachedLines(Minecraft client, List<String> lines, WidgetLayout old) {
+		List<CachedLine> oldLines = old == null ? List.of() : old.lines;
+		List<CachedLine> result = new ArrayList<>(lines.size());
+		for (int i = 0; i < lines.size(); i++) {
+			String text = lines.get(i);
+			if (i < oldLines.size() && text.equals(oldLines.get(i).text)) {
+				result.add(oldLines.get(i));
+			} else {
+				result.add(new CachedLine(text, client.font.width(text)));
+			}
 		}
-
-		if ("item_counter".equals(widget.id())) {
-			LocalPlayer player = client.player;
-			int lines = player != null ? getItemCounterLines(player).size() : 1;
-			return new Size(90, Math.max(1, lines) * (client.font.lineHeight + 2));
-		}
-
-		if ("timers".equals(widget.id())) {
-			return new Size(80, 2 * (client.font.lineHeight + 2));
-		}
-
-		if ("timelapse_info".equals(widget.id())) {
-			return new Size(120, 2 * (client.font.lineHeight + 2));
-		}
-
-		if ("build_height".equals(widget.id())) {
-			return new Size(120, 3 * (client.font.lineHeight + 2));
-		}
-
-		if ("measurements".equals(widget.id())) {
-			return new Size(100, 3 * (client.font.lineHeight + 2));
-		}
-
-		if ("ping_graph".equals(widget.id())) {
-			return new Size(100, 4 * (client.font.lineHeight + 2));
-		}
-
-		if ("tps_display".equals(widget.id())) {
-			return new Size(100, 2 * (client.font.lineHeight + 2));
-		}
-
-		if ("array_list".equals(widget.id())) {
-			List<String> enabledNames = getEnabledModuleTitles();
-			return new Size(
-				ArrayListHudComponent.calculateWidth(client, enabledNames),
-				ArrayListHudComponent.calculateHeight(client, enabledNames)
-			);
-		}
-
-		int width = 0;
-		List<String> lines = getWidgetLines(client, widget);
-		for (String line : lines) {
-			width = Math.max(width, client.font.width(line));
-		}
-
-		int height = lines.size() * (client.font.lineHeight + 2);
-		return new Size(width + 2, Math.max(height, client.font.lineHeight));
+		return result;
 	}
 
 	private List<String> getWidgetLines(Minecraft client, WidgetState widget) {
@@ -1849,12 +1976,20 @@ public final class ForkClientController {
 	}
 
 	private List<String> getEnabledModuleTitles() {
-		return this.modules.stream()
-			.filter(module -> isModuleEnabled(module.id()))
-			.filter(module -> module.category() != ModuleCategory.HUD)
-			.map(ModuleDefinition::title)
-			.sorted(Comparator.comparingInt(String::length).reversed())
-			.toList();
+		// Cache the sorted list of enabled module titles; it only changes when a
+		// module is toggled (generation counter), so this avoids re-running the
+		// stream/filter/sort pipeline once per widget per frame (the array list
+		// widget alone requested it up to three times per frame).
+		if (this.enabledTitlesGeneration != this.moduleStateGeneration) {
+			this.cachedEnabledTitles = this.modules.stream()
+				.filter(module -> isModuleEnabled(module.id()))
+				.filter(module -> module.category() != ModuleCategory.HUD)
+				.map(ModuleDefinition::title)
+				.sorted(Comparator.comparingInt(String::length).reversed())
+				.toList();
+			this.enabledTitlesGeneration = this.moduleStateGeneration;
+		}
+		return this.cachedEnabledTitles;
 	}
 
 	public List<String> enabledModuleTitles() {
@@ -2127,35 +2262,50 @@ public final class ForkClientController {
 		int px = (int) Math.floor(player.getX());
 		int py = (int) Math.floor(player.getY());
 		int pz = (int) Math.floor(player.getZ());
-		int range = 16;
 
-		int gridColor = 0x44FFFF00;
-		float lineHeight = 0.01F;
+		// The overlay geometry only depends on the player's block position and
+		// the level, so the Vec3 line endpoints are cached and re-submitted each
+		// frame. This removes ~75 Vec3 allocations per frame. Vec3 is immutable,
+		// so reusing the cached instances across frames is always safe.
+		if (this.gridOverlayCache.level != client.level
+			|| this.gridOverlayCache.px != px
+			|| this.gridOverlayCache.py != py
+			|| this.gridOverlayCache.pz != pz) {
+			this.gridOverlayCache.level = client.level;
+			this.gridOverlayCache.px = px;
+			this.gridOverlayCache.py = py;
+			this.gridOverlayCache.pz = pz;
+			this.gridOverlayCache.lines.clear();
 
-		for (int x = px - range; x <= px + range; x++) {
-			Vec3 from = new Vec3(x, py - 0.001, pz - range);
-			Vec3 to = new Vec3(x, py - 0.001, pz + range);
-			Gizmos.line(from, to, gridColor, lineHeight);
+			int range = 16;
+			int gridColor = 0x44FFFF00;
+			float lineHeight = 0.01F;
+
+			for (int x = px - range; x <= px + range; x++) {
+				this.gridOverlayCache.lines.add(new GizmoLine(new Vec3(x, py - 0.001, pz - range), new Vec3(x, py - 0.001, pz + range), gridColor, lineHeight));
+			}
+
+			for (int z = pz - range; z <= pz + range; z++) {
+				this.gridOverlayCache.lines.add(new GizmoLine(new Vec3(px - range, py - 0.001, z), new Vec3(px + range, py - 0.001, z), gridColor, lineHeight));
+			}
+
+			int chunkColor = 0x55FF8800;
+			int playerChunkX = px >> 4;
+			int playerChunkZ = pz >> 4;
+			for (int cx = playerChunkX - 2; cx <= playerChunkX + 2; cx++) {
+				int blockX = cx << 4;
+				this.gridOverlayCache.lines.add(new GizmoLine(new Vec3(blockX, py - 0.002, pz - range), new Vec3(blockX, py - 0.002, pz + range), chunkColor, lineHeight + 0.01F));
+				this.gridOverlayCache.lines.add(new GizmoLine(new Vec3(blockX + 16, py - 0.002, pz - range), new Vec3(blockX + 16, py - 0.002, pz + range), chunkColor, lineHeight + 0.01F));
+			}
+			for (int cz = playerChunkZ - 2; cz <= playerChunkZ + 2; cz++) {
+				int blockZ = cz << 4;
+				this.gridOverlayCache.lines.add(new GizmoLine(new Vec3(px - range, py - 0.002, blockZ), new Vec3(px + range, py - 0.002, blockZ), chunkColor, lineHeight + 0.01F));
+				this.gridOverlayCache.lines.add(new GizmoLine(new Vec3(px - range, py - 0.002, blockZ + 16), new Vec3(px + range, py - 0.002, blockZ + 16), chunkColor, lineHeight + 0.01F));
+			}
 		}
 
-		for (int z = pz - range; z <= pz + range; z++) {
-			Vec3 from = new Vec3(px - range, py - 0.001, z);
-			Vec3 to = new Vec3(px + range, py - 0.001, z);
-			Gizmos.line(from, to, gridColor, lineHeight);
-		}
-
-		int chunkColor = 0x55FF8800;
-		int playerChunkX = px >> 4;
-		int playerChunkZ = pz >> 4;
-		for (int cx = playerChunkX - 2; cx <= playerChunkX + 2; cx++) {
-			int blockX = cx << 4;
-			Gizmos.line(new Vec3(blockX, py - 0.002, pz - range), new Vec3(blockX, py - 0.002, pz + range), chunkColor, lineHeight + 0.01F);
-			Gizmos.line(new Vec3(blockX + 16, py - 0.002, pz - range), new Vec3(blockX + 16, py - 0.002, pz + range), chunkColor, lineHeight + 0.01F);
-		}
-		for (int cz = playerChunkZ - 2; cz <= playerChunkZ + 2; cz++) {
-			int blockZ = cz << 4;
-			Gizmos.line(new Vec3(px - range, py - 0.002, blockZ), new Vec3(px + range, py - 0.002, blockZ), chunkColor, lineHeight + 0.01F);
-			Gizmos.line(new Vec3(px - range, py - 0.002, blockZ + 16), new Vec3(px + range, py - 0.002, blockZ + 16), chunkColor, lineHeight + 0.01F);
+		for (GizmoLine line : this.gridOverlayCache.lines) {
+			Gizmos.line(line.from, line.to, line.color, line.width);
 		}
 	}
 
@@ -2164,29 +2314,43 @@ public final class ForkClientController {
 		if (player == null || client.level == null) return;
 
 		int px = (int) Math.floor(player.getX());
-		int py = (int) Math.floor(player.getY());
 		int pz = (int) Math.floor(player.getZ());
 
 		int playerChunkX = px >> 4;
 		int playerChunkZ = pz >> 4;
-		int viewDist = 4;
 
-		int lineColor = 0x88FF3333;
-		float lineWidth = 0.05F;
+		// Same caching approach as the grid overlay: border line geometry is
+		// rebuilt only when the player crosses into a new chunk or changes level,
+		// removing ~324 Vec3 allocations per frame when enabled.
+		if (this.chunkBorderCache.level != client.level
+			|| this.chunkBorderCache.px != playerChunkX
+			|| this.chunkBorderCache.pz != playerChunkZ) {
+			this.chunkBorderCache.level = client.level;
+			this.chunkBorderCache.px = playerChunkX;
+			this.chunkBorderCache.pz = playerChunkZ;
+			this.chunkBorderCache.lines.clear();
 
-		int yTop = 320;
-		int yBottom = -64;
+			int viewDist = 4;
+			int lineColor = 0x88FF3333;
+			float lineWidth = 0.05F;
+			int yTop = 320;
+			int yBottom = -64;
 
-		for (int cx = playerChunkX - viewDist; cx <= playerChunkX + viewDist; cx++) {
-			for (int cz = playerChunkZ - viewDist; cz <= playerChunkZ + viewDist; cz++) {
-				int bx = cx << 4;
-				int bz = cz << 4;
+			for (int cx = playerChunkX - viewDist; cx <= playerChunkX + viewDist; cx++) {
+				for (int cz = playerChunkZ - viewDist; cz <= playerChunkZ + viewDist; cz++) {
+					int bx = cx << 4;
+					int bz = cz << 4;
 
-				Gizmos.line(new Vec3(bx, yBottom, bz), new Vec3(bx, yTop, bz), lineColor, lineWidth);
-				Gizmos.line(new Vec3(bx + 16, yBottom, bz), new Vec3(bx + 16, yTop, bz), lineColor, lineWidth);
-				Gizmos.line(new Vec3(bx, yBottom, bz + 16), new Vec3(bx, yTop, bz + 16), lineColor, lineWidth);
-				Gizmos.line(new Vec3(bx + 16, yBottom, bz + 16), new Vec3(bx + 16, yTop, bz + 16), lineColor, lineWidth);
+					this.chunkBorderCache.lines.add(new GizmoLine(new Vec3(bx, yBottom, bz), new Vec3(bx, yTop, bz), lineColor, lineWidth));
+					this.chunkBorderCache.lines.add(new GizmoLine(new Vec3(bx + 16, yBottom, bz), new Vec3(bx + 16, yTop, bz), lineColor, lineWidth));
+					this.chunkBorderCache.lines.add(new GizmoLine(new Vec3(bx, yBottom, bz + 16), new Vec3(bx, yTop, bz + 16), lineColor, lineWidth));
+					this.chunkBorderCache.lines.add(new GizmoLine(new Vec3(bx + 16, yBottom, bz + 16), new Vec3(bx + 16, yTop, bz + 16), lineColor, lineWidth));
+				}
 			}
+		}
+
+		for (GizmoLine line : this.chunkBorderCache.lines) {
+			Gizmos.line(line.from, line.to, line.color, line.width);
 		}
 	}
 
@@ -2308,6 +2472,7 @@ public final class ForkClientController {
 		}
 
 		this.moduleStates.put(id, enabled);
+		markModuleStatesChanged();
 
 		if (!enabled && "toggle_sneak".equals(id)) {
 			this.toggleSneakLatched = false;
@@ -2348,6 +2513,12 @@ public final class ForkClientController {
 		String moduleId = getWidgetModuleId(widget.id());
 		if (moduleId != null) {
 			this.moduleStates.put(moduleId, widget.enabled());
+			markModuleStatesChanged();
+		}
+		// Re-clamp immediately when shown so a widget enabled after a window
+		// resize always appears inside the viewport (matches old per-frame clamp).
+		if (widget.enabled()) {
+			clampWidgetToViewport(Minecraft.getInstance(), widget);
 		}
 		addRecentAlert(widget.title() + (widget.enabled() ? " Shown" : " Hidden"));
 		if (isModuleEnabled("module_toggle_alerts")) {
@@ -2511,8 +2682,14 @@ public final class ForkClientController {
 
 		try {
 			Files.createDirectories(this.configPath.getParent());
-			try (OutputStream stream = Files.newOutputStream(this.configPath)) {
+			Path tempPath = this.configPath.resolveSibling(this.configPath.getFileName() + ".tmp");
+			try (OutputStream stream = Files.newOutputStream(tempPath)) {
 				properties.store(stream, "Fork Client settings");
+			}
+			try {
+				Files.move(tempPath, this.configPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+			} catch (AtomicMoveNotSupportedException exception) {
+				Files.move(tempPath, this.configPath, StandardCopyOption.REPLACE_EXISTING);
 			}
 		} catch (IOException exception) {
 			ForkClient.LOGGER.error("Failed to save Fork Client config", exception);
@@ -2689,6 +2866,16 @@ public final class ForkClientController {
 			String moduleId = getWidgetModuleId(widget.id());
 			this.moduleStates.put(moduleId, widget.enabled());
 		}
+		markModuleStatesChanged();
+	}
+
+	/**
+	 * Marks the cached enabled-module title list as stale. Called whenever the
+	 * module state map changes so the array list widget refreshes immediately
+	 * without re-sorting on every frame.
+	 */
+	private void markModuleStatesChanged() {
+		this.moduleStateGeneration++;
 	}
 
 	private void syncModuleStatesToWidgets() {
@@ -2733,6 +2920,10 @@ public final class ForkClientController {
 		WidgetState widget = this.widgetsById.get(widgetId);
 		if (widget != null) {
 			widget.setEnabled(enabled);
+			markModuleStatesChanged();
+			if (enabled) {
+				clampWidgetToViewport(Minecraft.getInstance(), widget);
+			}
 		}
 	}
 
@@ -2870,6 +3061,61 @@ public final class ForkClientController {
 	}
 
 	private record Size(int width, int height) {
+	}
+
+	/**
+	 * Cached rendered text line for a HUD widget. Holding the measured width and
+	 * a ready-to-draw {@link Component} lets the render loop skip font layout
+	 * and object allocation entirely while the underlying string is unchanged.
+	 */
+	private static final class CachedLine {
+		final String text;
+		final int width;
+		final Component component;
+
+		CachedLine(String text, int width) {
+			this.text = text;
+			this.width = width;
+			this.component = Component.literal(text);
+		}
+	}
+
+	/**
+	 * Cached layout (text lines + bounding size) for one HUD widget, valid for a
+	 * single layout version (one client tick). Rebuilt lazily on the first frame
+	 * of each new tick and reused for every frame until the next tick.
+	 */
+	private static final class WidgetLayout {
+		final long version;
+		final List<CachedLine> lines;
+		final Size size;
+
+		WidgetLayout(long version, List<CachedLine> lines, Size size) {
+			this.version = version;
+			this.lines = lines;
+			this.size = size;
+		}
+	}
+
+	/** Cached geometry for one gizmo line (immutable Vec3 endpoints). */
+	private record GizmoLine(Vec3 from, Vec3 to, int color, float width) {
+	}
+
+	/** Cache of grid overlay line geometry, keyed by player block position + level. */
+	private static final class GridOverlayCache {
+		Level level;
+		int px;
+		int py;
+		int pz;
+		final List<GizmoLine> lines = new ArrayList<>();
+	}
+
+	/** Cache of chunk border line geometry, keyed by player chunk position + level. */
+	private static final class ChunkBorderCache {
+		Level level;
+		int px;
+		int pz;
+		final List<GizmoLine> lines = new ArrayList<>();
 	}
 
 	public record Waypoint(String name, int x, int y, int z, String dimension, int color, boolean enabled) {
