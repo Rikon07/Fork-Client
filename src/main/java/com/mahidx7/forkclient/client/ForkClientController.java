@@ -47,6 +47,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
@@ -93,13 +94,23 @@ public final class ForkClientController {
 	private List<String> cachedEnabledTitles = List.of();
 
 	private static final long MINIMAP_CACHE_MS = 1000L;
-	private static final int MINIMAP_GRID = 32;
+	private static final int MINIMAP_GRID = 64;
+	private static final int MINIMAP_SIZE = 64;
+	private static final int MINIMAP_MAX_SURFACE_SCAN = 4;
+	private static final int MAP_PARCHMENT = 0xFFD5C8A8;
+	private static final int MAP_FRAME_DARK = 0xFF3A2410;
+	private static final int MAP_FRAME_LIGHT = 0xFFE8D8B8;
+	private static final int MINIMAP_BTN_SIZE = 14;
+	private static final int MINIMAP_BTN_MARGIN = 4;
+	private static final int MINIMAP_BTN_GAP = 2;
 	private long minimapCacheTime;
 	private int minimapCacheX;
 	private int minimapCacheY;
 	private int minimapCacheZ;
+	private int minimapCacheZoom = 1;
 	private Level minimapCacheLevel;
 	private int[] minimapCacheColors;
+	private boolean minimapZoomClickDown;
 	private final ArrayList<net.minecraft.world.entity.Entity> minimapEntityBuffer = new ArrayList<>();
 
 	private final GridOverlayCache gridOverlayCache = new GridOverlayCache();
@@ -1134,6 +1145,11 @@ public final class ForkClientController {
 				return;
 			}
 
+			// Frame-rate click handling for the minimap zoom buttons (the
+			// cursor is grabbed in normal play, so this only fires when it is
+			// free with no screen open).
+			handleMinimapZoomClick(client);
+
 			// Only layout/clamp widgets that are actually visible. Each widget's
 			// text and size come from a tick-based cache so the per-frame cost of
 			// the HUD loop is a map lookup instead of String.format + font
@@ -1193,7 +1209,7 @@ public final class ForkClientController {
 			outline = PANEL_DISABLED;
 		}
 
-		if (!"array_list".equals(widget.id())) {
+		if (!"array_list".equals(widget.id()) && !"minimap".equals(widget.id())) {
 			int outerX = x - 3;
 			int outerY = y - 3;
 			int outerWidth = size.width + 6;
@@ -1212,7 +1228,7 @@ public final class ForkClientController {
 		switch (widget.id()) {
 			case "keystrokes" -> renderKeystrokes(extractor, client, x, y);
 			case "array_list" -> renderArrayList(extractor, client, x, y, editorMode);
-			case "minimap" -> renderMinimap(extractor, client, x, y);
+			case "minimap" -> renderMinimap(extractor, client, x, y, highlighted);
 			default -> renderTextWidget(extractor, client, widget, x, y, editorMode, layout.lines);
 		}
 	}
@@ -1266,59 +1282,75 @@ public final class ForkClientController {
 		ArrayListHudComponent.render(extractor, client, x, y);
 	}
 
-	private void renderMinimap(GuiGraphicsExtractor extractor, Minecraft client, int x, int y) {
-		LocalPlayer player = client.player;
-		if (player == null || client.level == null) {
-			extractor.fill(x, y, x + 64, y + 64, 0xCC1B212A);
-			extractor.text(client.font, Component.literal("No Map"), x + 16, y + 28, TEXT_MUTED, false);
+	private void renderMinimap(GuiGraphicsExtractor extractor, Minecraft client, int x, int y, boolean highlighted) {
+		WidgetState widget = this.widgetsById.get("minimap");
+		boolean enabled = widget == null || widget.enabled();
+
+		if (highlighted) {
+			int glow = getCategoryColor(ModuleCategory.HUD);
+			extractor.outline(x - 2, y - 2, MINIMAP_SIZE + 4, MINIMAP_SIZE + 4, withAlpha(glow, 0x66));
+			extractor.outline(x - 1, y - 1, MINIMAP_SIZE + 2, MINIMAP_SIZE + 2, withAlpha(lighten(glow, 0.24F), 0xAA));
+		}
+
+		if (!enabled) {
+			extractor.fill(x, y, x + MINIMAP_SIZE, y + MINIMAP_SIZE, PANEL_BACKGROUND);
+			extractor.outline(x, y, MINIMAP_SIZE, MINIMAP_SIZE, PANEL_DISABLED);
+			extractor.outline(x + 2, y + 2, MINIMAP_SIZE - 4, MINIMAP_SIZE - 4, PANEL_INNER);
 			return;
 		}
 
-		int size = 64;
-		int radius = 16;
-		float pixelsPerBlock = (float) size / (float) (radius * 2);
+		LocalPlayer player = client.player;
+		if (player == null || client.level == null) {
+			extractor.fill(x, y, x + MINIMAP_SIZE, y + MINIMAP_SIZE, MAP_PARCHMENT);
+			drawMapFrame(extractor, x, y);
+			String noMap = "No Map";
+			extractor.text(client.font, Component.literal(noMap),
+				x + (MINIMAP_SIZE - client.font.width(noMap)) / 2,
+				y + (MINIMAP_SIZE - client.font.lineHeight) / 2, TEXT_DISABLED, false);
+			return;
+		}
 
-		extractor.enableScissor(x, y, x + size, y + size);
-		extractor.fill(x, y, x + size, y + size, 0xFF0A0E14);
-
-		float yaw = player.getVisualRotationYInDegrees();
-		float yawRad = (float) Math.toRadians(yaw);
-		float cos = (float) Math.cos(-yawRad);
-		float sin = (float) Math.sin(-yawRad);
-		int centerX = x + size / 2;
-		int centerY = y + size / 2;
+		int centerX = x + MINIMAP_SIZE / 2;
+		int centerY = y + MINIMAP_SIZE / 2;
 		int playerBlockX = (int) Math.floor(player.getX());
-		int playerBlockZ = (int) Math.floor(player.getZ());
 		int playerBlockY = (int) Math.floor(player.getY());
+		int playerBlockZ = (int) Math.floor(player.getZ());
 
 		// The block colors behind the minimap are cached and rebuilt only when
-		// the player crosses a block boundary, the level changes, or after a
-		// short timeout. This avoids up to 1024 getBlockState()+getMapColor()
-		// lookups per frame; the per-frame rotation transform still uses the
-		// cached colors so rendering stays smooth and unchanged.
+		// the player crosses a block boundary, the level changes, the zoom
+		// changes, or after a short timeout. Sampling up to 64x64 columns with
+		// getBlockState()+getMapColor() is the minimap's most expensive
+		// operation, so it must not run on every frame.
 		ensureMinimapGrid(client, playerBlockX, playerBlockY, playerBlockZ);
 
-		for (int dz = -radius; dz < radius; dz++) {
-			for (int dx = -radius; dx < radius; dx++) {
-				int color = this.minimapCacheColors[(dz + radius) * MINIMAP_GRID + (dx + radius)];
+		extractor.enableScissor(x, y, x + MINIMAP_SIZE, y + MINIMAP_SIZE);
+		extractor.fill(x, y, x + MINIMAP_SIZE, y + MINIMAP_SIZE, MAP_PARCHMENT);
 
-				float rx = (float) dx * pixelsPerBlock;
-				float rz = (float) dz * pixelsPerBlock;
-				int screenDx = Math.round(rx * cos - rz * sin);
-				int screenDz = Math.round(rx * sin + rz * cos);
-				int pixelX = centerX + screenDx;
-				int pixelZ = centerY + screenDz;
-				int pixelSize = Math.max(1, (int) Math.ceil(pixelsPerBlock));
-
-				if (pixelX + pixelSize > x && pixelX < x + size && pixelZ + pixelSize > y && pixelZ < y + size) {
-					extractor.fill(pixelX, pixelZ, pixelX + pixelSize, pixelZ + pixelSize, color | 0xFF000000);
+		// North-up blit of the cached color grid. A 0 entry is a transparent
+		// MapColor.NONE cell (air/unexplored), so parchment shows through.
+		int[] colors = this.minimapCacheColors;
+		if (colors != null) {
+			for (int j = 0; j < MINIMAP_GRID; j++) {
+				int rowBase = j * MINIMAP_GRID;
+				int runStart = -1;
+				int runColor = 0;
+				for (int i = 0; i <= MINIMAP_GRID; i++) {
+					int color = i < MINIMAP_GRID ? colors[rowBase + i] : -1;
+					if (color != runColor) {
+						if (runStart >= 0 && runColor != 0) {
+							extractor.fill(x + runStart, y + j, x + i, y + j + 1, runColor);
+						}
+						runStart = i;
+						runColor = color;
+					}
 				}
 			}
 		}
 
-		extractor.fill(centerX - 1, centerY - 1, centerX + 2, centerY + 2, 0xFFFFFFFF);
-		extractor.fill(centerX, centerY - 3, centerX + 1, centerY - 1, 0xFFFF4444);
+		drawMapFrame(extractor, x, y);
+		drawMinimapPlayerArrow(extractor, centerX, centerY, player);
 
+		float pxPerBlock = minimapPixelsPerBlock();
 		var entities = client.level.entitiesForRendering();
 		if (entities != null) {
 			// Reuse a single buffer for the entity snapshot so the minimap does
@@ -1327,63 +1359,266 @@ public final class ForkClientController {
 			entities.forEach(this.minimapEntityBuffer::add);
 			for (var entity : this.minimapEntityBuffer) {
 				if (entity == player) continue;
-				double ex = entity.getX() - player.getX();
-				double ez = entity.getZ() - player.getZ();
-				if (Math.abs(ex) > radius || Math.abs(ez) > radius) continue;
-				float erx = (float) ex * pixelsPerBlock;
-				float erz = (float) ez * pixelsPerBlock;
-				int esx = Math.round(erx * cos - erz * sin);
-				int esz = Math.round(erx * sin + erz * cos);
-				int epx = centerX + esx;
-				int epz = centerY + esz;
-				if (epx >= x && epx < x + size && epz >= y && epz < y + size) {
+				int epx = centerX + (int) Math.round((entity.getX() - player.getX()) * pxPerBlock);
+				int epz = centerY + (int) Math.round((entity.getZ() - player.getZ()) * pxPerBlock);
+				if (epx >= x && epx < x + MINIMAP_SIZE && epz >= y && epz < y + MINIMAP_SIZE) {
 					extractor.fill(epx - 1, epz - 1, epx + 1, epz + 1, 0xFFFF4444);
 				}
 			}
 		}
 
+		drawMinimapZoomButtons(extractor, x, y);
 		extractor.disableScissor();
+	}
+
+	private void drawMapFrame(GuiGraphicsExtractor extractor, int x, int y) {
+		extractor.fill(x, y, x + MINIMAP_SIZE, y + 2, MAP_FRAME_DARK);
+		extractor.fill(x, y + MINIMAP_SIZE - 2, x + MINIMAP_SIZE, y + MINIMAP_SIZE, MAP_FRAME_DARK);
+		extractor.fill(x, y, x + 2, y + MINIMAP_SIZE, MAP_FRAME_DARK);
+		extractor.fill(x + MINIMAP_SIZE - 2, y, x + MINIMAP_SIZE, y + MINIMAP_SIZE, MAP_FRAME_DARK);
+		extractor.outline(x + 2, y + 2, MINIMAP_SIZE - 4, MINIMAP_SIZE - 4, MAP_FRAME_LIGHT);
+	}
+
+	private void drawMinimapPlayerArrow(GuiGraphicsExtractor extractor, int centerX, int centerY, LocalPlayer player) {
+		// North-up map space: north points up, so the arrow direction is
+		// (-sin(yaw), cos(yaw)) (east = right, south = down).
+		float yawRad = (float) Math.toRadians(player.getVisualRotationYInDegrees());
+		float dx = -Mth.sin(yawRad);
+		float dy = Mth.cos(yawRad);
+
+		int tipX = centerX + Math.round(dx * 3);
+		int tipY = centerY + Math.round(dy * 3);
+		int baseX = centerX - Math.round(dx * 2);
+		int baseY = centerY - Math.round(dy * 2);
+		int perpX = Math.round(-dy * 2);
+		int perpY = Math.round(dx * 2);
+		int bx1 = baseX - perpX;
+		int by1 = baseY - perpY;
+		int bx2 = baseX + perpX;
+		int by2 = baseY + perpY;
+
+		// Dark outline (triangle grown away from its centroid), then white fill.
+		int centroidX = (tipX + bx1 + bx2) / 3;
+		int centroidY = (tipY + by1 + by2) / 3;
+		fillTriangle(extractor,
+			growVertex(centroidX, tipX), growVertex(centroidY, tipY),
+			growVertex(centroidX, bx1), growVertex(centroidY, by1),
+			growVertex(centroidX, bx2), growVertex(centroidY, by2), 0xFF1A1A1A);
+		fillTriangle(extractor, tipX, tipY, bx1, by1, bx2, by2, 0xFFFFFFFF);
+	}
+
+	private static int growVertex(int centroid, int value) {
+		if (value > centroid) {
+			return value + 1;
+		}
+		if (value < centroid) {
+			return value - 1;
+		}
+		return value;
+	}
+
+	private void fillTriangle(GuiGraphicsExtractor extractor, int x1, int y1, int x2, int y2, int x3, int y3, int color) {
+		int minY = Math.min(y1, Math.min(y2, y3));
+		int maxY = Math.max(y1, Math.max(y2, y3));
+		for (int yy = minY; yy <= maxY; yy++) {
+			double y0 = yy + 0.5;
+			double left = triangleEdgeIntersectionX(x1, y1, x2, y2, x3, y3, y0, true);
+			double right = triangleEdgeIntersectionX(x1, y1, x2, y2, x3, y3, y0, false);
+			if (right > left) {
+				extractor.fill((int) Math.floor(left), yy, (int) Math.ceil(right), yy + 1, color);
+			}
+		}
+	}
+
+	private static double triangleEdgeIntersectionX(int x1, int y1, int x2, int y2, int x3, int y3, double y0, boolean leftmost) {
+		double best = leftmost ? Double.MAX_VALUE : -Double.MAX_VALUE;
+		best = triangleEdge(best, x1, y1, x2, y2, y0, leftmost);
+		best = triangleEdge(best, x2, y2, x3, y3, y0, leftmost);
+		best = triangleEdge(best, x3, y3, x1, y1, y0, leftmost);
+		return best;
+	}
+
+	private static double triangleEdge(double best, int ax, int ay, int bx, int by, double y0, boolean leftmost) {
+		if ((ay <= y0 && y0 < by) || (by <= y0 && y0 < ay)) {
+			double x = ax + (bx - ax) * (y0 - ay) / (double) (by - ay);
+			return leftmost ? Math.min(best, x) : Math.max(best, x);
+		}
+		return best;
+	}
+
+	private void drawMinimapZoomButtons(GuiGraphicsExtractor extractor, int x, int y) {
+		int right = x + MINIMAP_SIZE - MINIMAP_BTN_MARGIN - MINIMAP_BTN_SIZE;
+		int left = right - MINIMAP_BTN_GAP - MINIMAP_BTN_SIZE;
+		int by = y + MINIMAP_BTN_MARGIN;
+		drawMinimapZoomButton(extractor, right, by, true);
+		drawMinimapZoomButton(extractor, left, by, false);
+	}
+
+	private void drawMinimapZoomButton(GuiGraphicsExtractor extractor, int bx, int by, boolean plus) {
+		extractor.fill(bx, by, bx + MINIMAP_BTN_SIZE, by + MINIMAP_BTN_SIZE, 0xAA1B212A);
+		extractor.outline(bx, by, MINIMAP_BTN_SIZE, MINIMAP_BTN_SIZE, 0xFF55D0FF);
+		if (plus) {
+			extractor.fill(bx + 6, by + 3, bx + 8, by + 11, 0xFFFFFFFF);
+		}
+		extractor.fill(bx + 3, by + 6, bx + 11, by + 8, 0xFFFFFFFF);
+	}
+
+	private boolean minimapButtonHit(int widgetX, int widgetY, double mouseX, double mouseY, boolean plus) {
+		int right = widgetX + MINIMAP_SIZE - MINIMAP_BTN_MARGIN - MINIMAP_BTN_SIZE;
+		int left = right - MINIMAP_BTN_GAP - MINIMAP_BTN_SIZE;
+		int bx = plus ? right : left;
+		int by = widgetY + MINIMAP_BTN_MARGIN;
+		return mouseX >= bx && mouseX < bx + MINIMAP_BTN_SIZE
+			&& mouseY >= by && mouseY < by + MINIMAP_BTN_SIZE;
+	}
+
+	private int getMinimapZoom() {
+		float zoom = getModuleFloatSetting("minimap_widget", "zoom", 1.0F);
+		if (zoom >= 4.0F) {
+			return 4;
+		}
+		if (zoom >= 2.0F) {
+			return 2;
+		}
+		return 1;
+	}
+
+	// Zoom radius in blocks: 16 / 32 / 64. Each grid pixel covers radius/32
+	// blocks (0.5 / 1 / 2), so the 64x64 widget maps to a 2*radius square.
+	private float minimapPixelsPerBlock() {
+		return (16 << (getMinimapZoom() - 1)) / 32.0F;
+	}
+
+	private void handleMinimapZoomClick(Minecraft client) {
+		WidgetState widget = this.widgetsById.get("minimap");
+		if (widget == null || !widget.enabled()) {
+			this.minimapZoomClickDown = false;
+			return;
+		}
+		if (client.gui.screen() != null || client.player == null
+			|| client.gui.hud.isHidden() || this.hudHidden
+			|| client.mouseHandler.isMouseGrabbed()) {
+			this.minimapZoomClickDown = false;
+			return;
+		}
+
+		// Fire once per press edge so holding the button does not cycle zoom.
+		boolean leftDown = GLFW.glfwGetMouseButton(client.getWindow().handle(), GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+		if (!leftDown || this.minimapZoomClickDown) {
+			this.minimapZoomClickDown = leftDown;
+			return;
+		}
+		this.minimapZoomClickDown = true;
+
+		double mouseX = client.mouseHandler.getScaledXPos(client.getWindow());
+		double mouseY = client.mouseHandler.getScaledYPos(client.getWindow());
+		boolean plus = minimapButtonHit(widget.x(), widget.y(), mouseX, mouseY, true);
+		boolean minus = minimapButtonHit(widget.x(), widget.y(), mouseX, mouseY, false);
+		if (!plus && !minus) {
+			return;
+		}
+
+		int zoom = getMinimapZoom();
+		int next = plus ? (zoom >= 4 ? 1 : zoom * 2) : (zoom <= 1 ? 4 : zoom / 2);
+		// Force the cached grid to rebuild on the next frame.
+		this.minimapCacheZoom = -1;
+		setModuleFloatSetting("minimap_widget", "zoom", next);
 	}
 
 	/**
 	 * Rebuilds the cached minimap block-color grid only when the sampled block
-	 * position, the level, or the refresh timer changes. Sampling 1024 block
-	 * states with map-color lookup is the minimap's most expensive operation, so
-	 * it must not run on every frame.
+	 * position, the level, the zoom, or the refresh timer changes. Sampling up
+	 * to 4096 block columns with map-color lookup is the minimap's most
+	 * expensive operation, so it must not run on every frame. The rebuild is
+	 * allowed to run less often at higher zoom, where it is heavier.
 	 */
 	private void ensureMinimapGrid(Minecraft client, int px, int py, int pz) {
+		int zoom = getMinimapZoom();
 		long now = System.currentTimeMillis();
+		long cacheMs = zoom > 1 ? 1500L : MINIMAP_CACHE_MS;
 		if (this.minimapCacheColors != null
 			&& this.minimapCacheLevel == client.level
+			&& this.minimapCacheZoom == zoom
 			&& this.minimapCacheX == px
 			&& this.minimapCacheY == py
 			&& this.minimapCacheZ == pz
-			&& now - this.minimapCacheTime < MINIMAP_CACHE_MS) {
+			&& now - this.minimapCacheTime < cacheMs) {
 			return;
 		}
 
-		int radius = 16;
+		float pxPerBlock = minimapPixelsPerBlock();
 		int[] colors = new int[MINIMAP_GRID * MINIMAP_GRID];
-		for (int dz = -radius; dz < radius; dz++) {
-			for (int dx = -radius; dx < radius; dx++) {
-				BlockPos pos = new BlockPos(px + dx, py, pz + dz);
-				int color;
-				try {
-					color = client.level.getBlockState(pos).getMapColor(client.level, pos).col;
-				} catch (Exception e) {
-					ForkClient.LOGGER.debug("Failed to get map color at {}", pos, e);
-					color = 0xFF000000;
-				}
-				colors[(dz + radius) * MINIMAP_GRID + (dx + radius)] = color;
+		for (int j = 0; j < MINIMAP_GRID; j++) {
+			int rowBase = j * MINIMAP_GRID;
+			for (int i = 0; i < MINIMAP_GRID; i++) {
+				double wx = px + (i - MINIMAP_GRID / 2 + 0.5) * pxPerBlock;
+				double wz = pz + (j - MINIMAP_GRID / 2 + 0.5) * pxPerBlock;
+				colors[rowBase + i] = sampleMinimapColor(client, wx, py, wz);
 			}
 		}
 
 		this.minimapCacheColors = colors;
 		this.minimapCacheLevel = client.level;
+		this.minimapCacheZoom = zoom;
 		this.minimapCacheX = px;
 		this.minimapCacheY = py;
 		this.minimapCacheZ = pz;
 		this.minimapCacheTime = now;
+	}
+
+	/**
+	 * Samples the vanilla packed map color for one map pixel: scans the block
+	 * column around the player's Y for the first surface with a non-NONE map
+	 * color, then picks a brightness by the surface's height relative to the
+	 * player (above = lightest, level = mid, below = darker). Water columns
+	 * darken with depth, approximating the vanilla map depth pattern.
+	 */
+	private int sampleMinimapColor(Minecraft client, double wx, int py, double wz) {
+		int bx = (int) Math.floor(wx);
+		int bz = (int) Math.floor(wz);
+		MapColor material = MapColor.NONE;
+		int materialY = py;
+		int waterDepth = 0;
+
+		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+		for (int y = py + MINIMAP_MAX_SURFACE_SCAN; y >= py - MINIMAP_MAX_SURFACE_SCAN; y--) {
+			pos.set(bx, y, bz);
+			MapColor color;
+			try {
+				color = client.level.getBlockState(pos).getMapColor(client.level, pos);
+			} catch (Exception e) {
+				color = MapColor.NONE;
+			}
+			if (color == MapColor.NONE) {
+				continue;
+			}
+			if (color == MapColor.WATER) {
+				waterDepth++;
+				continue;
+			}
+			material = color;
+			materialY = y;
+			break;
+		}
+
+		if (material == MapColor.NONE) {
+			if (waterDepth == 0) {
+				return 0;
+			}
+			material = MapColor.WATER;
+		}
+
+		MapColor.Brightness brightness;
+		if (waterDepth > 0) {
+			brightness = waterDepth >= 3 ? MapColor.Brightness.LOWEST : MapColor.Brightness.LOW;
+		} else if (materialY > py) {
+			brightness = MapColor.Brightness.HIGH;
+		} else if (materialY < py) {
+			brightness = MapColor.Brightness.LOW;
+		} else {
+			brightness = MapColor.Brightness.NORMAL;
+		}
+		return MapColor.getColorFromPackedId(material.id * 4 + brightness.id);
 	}
 
 	private void renderNotifications(GuiGraphicsExtractor extractor, Minecraft client) {

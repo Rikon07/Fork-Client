@@ -20,7 +20,7 @@ Build verified: `./gradlew build --offline` succeeds → `build/libs/fork-client
 
 ### 3. Minimap grid + entity snapshot caching
 - **Before:** up to 1024 `level.getBlockState(...)` + `getMapColor()` lookups per frame plus a fresh `new ArrayList<>()` for the entity snapshot every frame.
-- **After:** a 32×32 color grid is rebuilt only when the player's block position changes, the level changes, or a 1000 ms timeout elapses (`MINIMAP_CACHE_MS`, `MINIMAP_GRID`). The entity snapshot reuses a persistent buffer list (`minimapEntityBuffer`) cleared each frame instead of allocating.
+- **After:** a 64×64 color grid (4096 pixels, vanilla packed map colors) is rebuilt only when the player's block position changes, the level changes, the zoom (1x/2x/4x) changes, or a refresh timeout elapses (`MINIMAP_CACHE_MS`, `MINIMAP_GRID`). The timeout rises to 1500 ms at higher zoom where the rebuild is heavier. The entity snapshot reuses a persistent buffer list (`minimapEntityBuffer`) cleared each frame instead of allocating.
 
 ### 4. Grid overlay + chunk border geometry caching
 - **Before:** every frame allocated ~75 `Vec3` objects for the grid overlay and ~324 for chunk borders.
@@ -40,7 +40,7 @@ Build verified: `./gradlew build --offline` succeeds → `build/libs/fork-client
 |---|---|---|
 | HUD text work per frame | format + measure + allocate per line | 0 for unchanged lines; reused components |
 | Module title sort/filter | per frame | only on state change |
-| Minimap block lookups | ~1024/frame | up to 1024 per block-move or 1 s |
+| Minimap block lookups | ~1024/frame | up to 4096 per block-move, zoom change, or refresh timeout (1 s at 1x, 1.5 s at 2x/4x) |
 | Minimap entity allocations | 1 list/frame | 0 (buffer reused) |
 | Grid overlay Vec3s | ~75/frame | ~0 (rebuilt on move) |
 | Chunk border Vec3s | ~324/frame | ~0 (rebuilt on chunk change) |
