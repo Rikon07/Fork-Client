@@ -3,7 +3,6 @@ package com.mahidx7.forkclient.mixin;
 import com.mahidx7.forkclient.client.ForkClientController;
 import com.mahidx7.forkclient.client.permissions.FeaturePermissions;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.world.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;

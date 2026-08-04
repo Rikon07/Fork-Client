@@ -9,7 +9,7 @@
 	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
-		"sources": "https://github.com/mahidx7/fork-client"
+		"sources": "https://gitlab.com/mh77mahid/fork-client"
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/fork-client/icon.png",

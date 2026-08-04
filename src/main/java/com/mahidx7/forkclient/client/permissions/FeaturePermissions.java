@@ -1,6 +1,5 @@
 package com.mahidx7.forkclient.client.permissions;
 
-import com.mahidx7.forkclient.ForkClient;
 import com.mahidx7.forkclient.network.MovementPermissionsPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;

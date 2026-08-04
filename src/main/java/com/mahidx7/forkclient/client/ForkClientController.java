@@ -48,12 +48,9 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.MapColor;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.gizmos.Gizmos;
-import net.minecraft.gizmos.GizmoStyle;
 import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
@@ -183,15 +180,10 @@ public final class ForkClientController {
 	// ── Content Creation state ───────────────────────────────────────────
 	private float cinematicYaw;
 	private float cinematicPitch;
-	private float cinematicRoll;
-	private float cinematicSpeed;
 	private boolean cinematicActive;
 	private boolean hudHidden;
-	private boolean screenshotHudHidden;
 	private boolean timelapseRunning;
 	private long timelapseStartMs;
-	private float timelapseSavedYaw;
-	private float timelapseSavedPitch;
 	private boolean timelapsePositionLocked;
 	private int timelapseCompassLock = -1;
 	private boolean cameraPathRecording;
@@ -213,8 +205,6 @@ public final class ForkClientController {
 	private final List<String[]> serverBookmarks = new ArrayList<>();
 	private final List<String[]> playerNotes = new ArrayList<>();
 	private final List<String> quickMessages = new ArrayList<>(List.of("Hello", "GG", "Thanks", "GLHF"));
-	private final Map<String, List<Long>> serverPingHistory = new LinkedHashMap<>();
-	private long lastPingSampleMs;
 	private long lastTpsSampleMs;
 	private long lastTpsGameTime;
 	private boolean[] quickMessageKeyWasDown = new boolean[9];
@@ -655,8 +645,6 @@ public final class ForkClientController {
 			if (!this.timelapseRunning) {
 				this.timelapseRunning = true;
 				this.timelapseStartMs = System.currentTimeMillis();
-				this.timelapseSavedYaw = client.player.getYRot();
-				this.timelapseSavedPitch = client.player.getXRot();
 			}
 			LocalPlayer player = client.player;
 			if (this.timelapsePositionLocked) {
@@ -1650,7 +1638,6 @@ public final class ForkClientController {
 		int guiW = extractor.guiWidth();
 		int guiH = extractor.guiHeight();
 		int centerX = guiW / 2;
-		int centerY = guiH / 2;
 		int lineHeight = client.font.lineHeight + 4;
 		int margin = 4;
 

@@ -13,7 +13,6 @@ public final class ArrayListHudComponent {
 	private static final int PANEL_OUTLINE = 0xFF55D0FF;
 	private static final int PANEL_OUTLINE_HOVER = 0xFF8EE7FF;
 	private static final int PANEL_INNER = 0xFF474E4A;
-	private static final int TEXT_PRIMARY = 0xFFFFFFFF;
 	private static final int TEXT_MUTED = 0xFFE1E6DE;
 
 	private static final int[] GRADIENT_PALETTE = {
