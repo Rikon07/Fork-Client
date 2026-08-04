@@ -4,7 +4,7 @@ Optimization pass targeting the reported 20–30 FPS loss and input lag while pl
 **Constraint honored throughout: no feature, behavior, visual, or UX change.**
 All changes are internal caching / allocation / frequency reductions in the client-side render and tick hot paths.
 
-Build verified: `./gradlew build --offline` succeeds → `build/libs/fork-client-1.0.3+26.2.jar`.
+Build verified: `./gradlew build --offline` succeeds → `build/libs/fork-client-1.0.4+26.2.jar`.
 
 ## Summary of changes (all in `ForkClientController.java`)
 
