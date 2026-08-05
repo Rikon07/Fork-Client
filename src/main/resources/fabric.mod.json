@@ -8,8 +8,11 @@
 		"Mahidx7"
 	],
 	"contact": {
-		"homepage": "https://fabricmc.net/",
-		"sources": "https://gitlab.com/mh77mahid/fork-client"
+		"homepage": "https://gitlab.com/mh77mahid/fork-client",
+		"sources": "https://gitlab.com/mh77mahid/fork-client",
+		"issues": "https://gitlab.com/mh77mahid/fork-client/-/work_items",
+		"modrinth": "https://modrinth.com/mod/fork-client",
+		"youtube": "https://www.youtube.com/@Mahidx7"
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/fork-client/icon.png",
