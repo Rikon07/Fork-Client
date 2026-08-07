@@ -12,7 +12,12 @@
 		"CameraMixin",
 		"LivingEntityRendererMixin",
 		"ChatComponentMixin",
-		"ChatFilterMixin"
+		"ChatFilterMixin",
+		"ChatScreenMixin",
+		"ShaderManagerAccessor",
+		"GameRendererPoolAccessor",
+		"PostEffectPassBufferAccessor",
+		"PostEffectProcessorPassesAccessor"
 	],
 	"injectors": {
 		"defaultRequire": 1

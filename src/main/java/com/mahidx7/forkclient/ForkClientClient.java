@@ -1,6 +1,7 @@
 package com.mahidx7.forkclient;
 
 import com.mahidx7.forkclient.client.ForkClientController;
+import com.mahidx7.forkclient.client.modules.MotionBlurPlusModule;
 import com.mahidx7.forkclient.client.permissions.FeaturePermissions;
 import com.mahidx7.forkclient.network.ForkClientHandshakePayload;
 import com.mahidx7.forkclient.network.MovementPermissionsPayload;
@@ -30,6 +31,7 @@ public class ForkClientClient implements ClientModInitializer {
         });
 
         ForkClientController.INSTANCE.initialize();
+        MotionBlurPlusModule.initialize();
         ForkClient.LOGGER.info("Fork Client initialized.");
     }
 }
