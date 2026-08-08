@@ -40,6 +40,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -130,10 +131,24 @@ public final class ForkClientController {
 	private KeyMapping freelookKey;
 	private KeyMapping hideHudKey;
 	private KeyMapping cameraPathKey;
+	private KeyMapping brightnessToggleKey;
+	private KeyMapping brightnessRaiseKey;
+	private KeyMapping brightnessLowerKey;
 	private ModuleCategory selectedCategory = ModuleCategory.HUD;
 	private Path configPath;
-	private boolean gammaCaptured;
-	private double storedGamma;
+
+	// ── Brightness Plus state ────────────────────────────────────────────
+	public static final String MODULE_BRIGHTNESS_PLUS = "brightness_plus";
+	private static final double BRIGHTNESS_PLUS_DEFAULT = 0.0;
+	private static final double BRIGHTNESS_PLUS_DEFAULT_VALUE = 1.0;
+	private static final double BRIGHTNESS_PLUS_MIN = -1.0;
+	private static final double BRIGHTNESS_PLUS_MAX = 12.0;
+	private static final double BRIGHTNESS_PLUS_STEP = 0.1;
+	private double brightnessPlusValue = BRIGHTNESS_PLUS_DEFAULT_VALUE;
+	private double brightnessPlusMin = BRIGHTNESS_PLUS_MIN;
+	private double brightnessPlusMax = BRIGHTNESS_PLUS_MAX;
+	private double brightnessPlusStep = BRIGHTNESS_PLUS_STEP;
+
 	private boolean zoomApplied;
 	private int storedFov;
 	private float freelookYaw;
@@ -300,7 +315,7 @@ public final class ForkClientController {
 	}
 
 	private void registerModules() {
-		addModule("fullbright", "Fullbright", ModuleCategory.VISUAL, "Boosts brightness without changing resources.", false);
+		addModule(MODULE_BRIGHTNESS_PLUS, "Brightness Plus", ModuleCategory.VISUAL, "Set brightness beyond default levels with enhanced controls. B toggles, = and - adjust.", false);
 		addModule("zoom", "Zoom", ModuleCategory.VISUAL, "Zooms while the dedicated key is held.", true);
 		addModule("time_changer", "Time Changer", ModuleCategory.VISUAL, "Pins the client world clock to noon.", false);
 		addModule("block_outline", "Block Outline", ModuleCategory.VISUAL, "Forces block outline rendering while looking at blocks.", true);
@@ -428,6 +443,15 @@ public final class ForkClientController {
 		this.cameraPathKey = KeyMappingHelper.registerKeyMapping(
 			new KeyMapping("key.fork-client.camera_path", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_J, this.keyCategory)
 		);
+		this.brightnessToggleKey = KeyMappingHelper.registerKeyMapping(
+			new KeyMapping("key.fork-client.brightness_toggle", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_B, this.keyCategory)
+		);
+		this.brightnessRaiseKey = KeyMappingHelper.registerKeyMapping(
+			new KeyMapping("key.fork-client.brightness_raise", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_EQUAL, this.keyCategory)
+		);
+		this.brightnessLowerKey = KeyMappingHelper.registerKeyMapping(
+			new KeyMapping("key.fork-client.brightness_lower", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_MINUS, this.keyCategory)
+		);
 	}
 
 	private void addModule(String id, String title, ModuleCategory category, String description, boolean defaultEnabled) {
@@ -462,7 +486,7 @@ public final class ForkClientController {
 			toggleHudEditor(client);
 		}
 
-		applyFullbright(client);
+		applyBrightnessPlus(client);
 		applyZoom(client);
 		applyFreelook(client);
 		applyTimeChanger(client);
@@ -777,22 +801,90 @@ public final class ForkClientController {
 		this.openHudEditorKey.consumeClick();
 	}
 
-	private void applyFullbright(Minecraft client) {
-		if (isModuleEnabled("fullbright") && FeaturePermissions.canUseRendering()) {
-			if (!this.gammaCaptured) {
-				this.storedGamma = client.options.gamma().get();
-				this.gammaCaptured = true;
-			}
-
-			// Only write the option when it changed; avoids firing the option's
-			// listeners (and related work) on every tick while already active.
-			if (client.options.gamma().get() != 1000.0D) {
-				client.options.gamma().set(1000.0D);
-			}
+	private void applyBrightnessPlus(Minecraft client) {
+		if (!FeaturePermissions.canUseRendering()) {
 			return;
 		}
 
-		restoreFullbright(client);
+		while (this.brightnessToggleKey.consumeClick()) {
+			toggleBrightnessPlus(client);
+		}
+		while (this.brightnessRaiseKey.consumeClick()) {
+			adjustBrightnessPlus(client, true);
+		}
+		while (this.brightnessLowerKey.consumeClick()) {
+			adjustBrightnessPlus(client, false);
+		}
+
+		enforceBrightnessPlus(client);
+	}
+
+	private void toggleBrightnessPlus(Minecraft client) {
+		boolean enabled = isModuleEnabled(MODULE_BRIGHTNESS_PLUS);
+		if (enabled) {
+			client.options.gamma().set(BRIGHTNESS_PLUS_DEFAULT);
+			client.options.save();
+		} else if (this.brightnessPlusValue <= 0.0) {
+			changeBrightnessPlus(client, BRIGHTNESS_PLUS_MAX);
+		} else {
+			client.options.gamma().set(this.brightnessPlusValue);
+			client.options.save();
+		}
+		toggleModule(MODULE_BRIGHTNESS_PLUS);
+		showBrightnessPlusOverlay(client);
+		saveConfig();
+	}
+
+	private void adjustBrightnessPlus(Minecraft client, boolean increase) {
+		double step = this.brightnessPlusStep;
+		if (InputConstants.isKeyDown(client.getWindow(), GLFW.GLFW_KEY_LEFT_SHIFT)
+				|| InputConstants.isKeyDown(client.getWindow(), GLFW.GLFW_KEY_RIGHT_SHIFT)) {
+			step *= 5.0;
+		}
+		if (InputConstants.isKeyDown(client.getWindow(), GLFW.GLFW_KEY_LEFT_CONTROL)
+				|| InputConstants.isKeyDown(client.getWindow(), GLFW.GLFW_KEY_RIGHT_CONTROL)) {
+			step *= 0.2;
+		}
+		double newValue = clampBrightness(increase ? this.brightnessPlusValue + step : this.brightnessPlusValue - step);
+		changeBrightnessPlus(client, newValue);
+		showBrightnessPlusOverlay(client);
+		saveConfig();
+	}
+
+	private void changeBrightnessPlus(Minecraft client, double value) {
+		this.brightnessPlusValue = clampBrightness(value);
+		client.options.gamma().set(this.brightnessPlusValue);
+		client.options.save();
+	}
+
+	private void enforceBrightnessPlus(Minecraft client) {
+		double desired = isModuleEnabled(MODULE_BRIGHTNESS_PLUS) ? this.brightnessPlusValue : BRIGHTNESS_PLUS_DEFAULT;
+		double current = client.options.gamma().get();
+		if (Math.abs(current - desired) > 0.000001) {
+			client.options.gamma().set(desired);
+		}
+	}
+
+	private void showBrightnessPlusOverlay(Minecraft client) {
+		if (client.player == null) {
+			return;
+		}
+		long percent = Math.round(this.brightnessPlusValue * 100.0);
+		client.player.sendOverlayMessage(
+			Component.translatable("overlay.fork-client.brightness_change", percent).withStyle(ChatFormatting.GREEN)
+		);
+	}
+
+	private double clampBrightness(double value) {
+		return Math.max(this.brightnessPlusMin, Math.min(this.brightnessPlusMax, value));
+	}
+
+	public boolean isBrightnessPlusEnabled() {
+		return isModuleEnabled(MODULE_BRIGHTNESS_PLUS) && FeaturePermissions.canUseRendering();
+	}
+
+	public double getBrightnessPlusValue() {
+		return this.brightnessPlusValue;
 	}
 
 	private void applyZoom(Minecraft client) {
@@ -926,15 +1018,6 @@ public final class ForkClientController {
 			mz * cos * speed + mx * sin * speed
 		);
 		// Jump impulse is applied above via setDeltaMovement; no hasImpulse field available
-	}
-
-	private void restoreFullbright(Minecraft client) {
-		if (!this.gammaCaptured) {
-			return;
-		}
-
-		client.options.gamma().set(this.storedGamma);
-		this.gammaCaptured = false;
 	}
 
 	private void restoreZoom(Minecraft client) {
@@ -2705,8 +2788,11 @@ public final class ForkClientController {
 			this.toggleSneakLatched = false;
 		}
 
-		if (!enabled && "fullbright".equals(id)) {
-			restoreFullbright(Minecraft.getInstance());
+		if (!enabled && MODULE_BRIGHTNESS_PLUS.equals(id)) {
+			Minecraft client = Minecraft.getInstance();
+			if (client != null) {
+				enforceBrightnessPlus(client);
+			}
 		}
 
 		if (!enabled && "zoom".equals(id)) {
@@ -2907,6 +2993,12 @@ public final class ForkClientController {
 			properties.setProperty("quickmsg." + i, this.quickMessages.get(i));
 		}
 
+		// ── Brightness Plus ─────────────────────────────────────────────
+		properties.setProperty("brightness_plus.value", Double.toString(this.brightnessPlusValue));
+		properties.setProperty("brightness_plus.min", Double.toString(this.brightnessPlusMin));
+		properties.setProperty("brightness_plus.max", Double.toString(this.brightnessPlusMax));
+		properties.setProperty("brightness_plus.step", Double.toString(this.brightnessPlusStep));
+
 		try {
 			Files.createDirectories(this.configPath.getParent());
 			Path tempPath = this.configPath.resolveSibling(this.configPath.getFileName() + ".tmp");
@@ -3085,6 +3177,12 @@ public final class ForkClientController {
 			}
 		}
 
+		// ── Brightness Plus ─────────────────────────────────────────────
+		this.brightnessPlusMin = parseDouble(properties.getProperty("brightness_plus.min"), this.brightnessPlusMin);
+		this.brightnessPlusMax = parseDouble(properties.getProperty("brightness_plus.max"), this.brightnessPlusMax);
+		this.brightnessPlusStep = parseDouble(properties.getProperty("brightness_plus.step"), this.brightnessPlusStep);
+		this.brightnessPlusValue = clampBrightness(parseDouble(properties.getProperty("brightness_plus.value"), this.brightnessPlusValue));
+
 		syncWidgetBackedModules();
 	}
 
@@ -3184,6 +3282,14 @@ public final class ForkClientController {
 		try {
 			return Integer.parseInt(value);
 		} catch (NumberFormatException ignored) {
+			return fallback;
+		}
+	}
+
+	private double parseDouble(String value, double fallback) {
+		try {
+			return Double.parseDouble(value);
+		} catch (NumberFormatException | NullPointerException ignored) {
 			return fallback;
 		}
 	}

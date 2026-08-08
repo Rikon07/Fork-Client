@@ -17,7 +17,8 @@
 		"ShaderManagerAccessor",
 		"GameRendererPoolAccessor",
 		"PostEffectPassBufferAccessor",
-		"PostEffectProcessorPassesAccessor"
+		"PostEffectProcessorPassesAccessor",
+		"LightmapRenderStateExtractorMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
