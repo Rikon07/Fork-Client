@@ -1,6 +1,7 @@
 package com.mahidx7.forkclient.client;
 
 import com.mahidx7.forkclient.ForkClient;
+import com.mahidx7.forkclient.client.hud.ArmorDurabilityHudComponent;
 import com.mahidx7.forkclient.client.hud.ArrayListHudComponent;
 import com.mahidx7.forkclient.client.permissions.FeaturePermissions;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -45,7 +46,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.MapColor;
@@ -346,7 +346,7 @@ public final class ForkClientController {
 		addModule("memory_widget", "Memory Usage", ModuleCategory.HUD, "Displays current Java memory usage.", true);
 		addModule("direction_widget", "Direction HUD", ModuleCategory.HUD, "Displays the direction you are facing.", true);
 		addModule("biome_widget", "Biome Display", ModuleCategory.HUD, "Displays the biome at your position.", true);
-		addModule("armor_widget", "Armor Status", ModuleCategory.HUD, "Displays armor points and durability.", true);
+		addModule("armor_durability", "Armor Durability", ModuleCategory.HUD, "Displays armor items with durability percentages.", true);
 		addModule("saturation_widget", "Saturation Display", ModuleCategory.HUD, "Displays hunger and saturation.", true);
 		addModule("day_counter_widget", "Day Counter", ModuleCategory.HUD, "Displays the current world day.", true);
 		addModule("server_widget", "Server Widget", ModuleCategory.HUD, "Displays server or singleplayer status.", true);
@@ -404,7 +404,7 @@ public final class ForkClientController {
 		addWidget("day_counter", "Day Counter", 12, 148, true);
 		addWidget("clock", "Clock", 12, 164, true);
 		addWidget("server", "Server", 12, 180, true);
-		addWidget("armor", "Armor", 12, 216, true);
+		addWidget("armor_durability", "Armor Durability", 12, 216, true);
 		addWidget("keystrokes", "Keystrokes", 12, 272, true);
 		addWidget("cps", "CPS", 104, 272, true);
 		addWidget("performance", "Performance", 180, 12, true);
@@ -1281,7 +1281,7 @@ public final class ForkClientController {
 			outline = PANEL_DISABLED;
 		}
 
-		if (!"array_list".equals(widget.id()) && !"minimap".equals(widget.id())) {
+		if (!"array_list".equals(widget.id()) && !"minimap".equals(widget.id()) && !"armor_durability".equals(widget.id())) {
 			int outerX = x - 3;
 			int outerY = y - 3;
 			int outerWidth = size.width + 6;
@@ -1301,6 +1301,7 @@ public final class ForkClientController {
 			case "keystrokes" -> renderKeystrokes(extractor, client, x, y);
 			case "array_list" -> renderArrayList(extractor, client, x, y, editorMode);
 			case "minimap" -> renderMinimap(extractor, client, x, y, highlighted);
+			case "armor_durability" -> ArmorDurabilityHudComponent.render(extractor, client, x, y, editorMode);
 			default -> renderTextWidget(extractor, client, widget, x, y, editorMode, layout.lines);
 		}
 	}
@@ -1882,6 +1883,14 @@ public final class ForkClientController {
 				yield new WidgetLayout(this.layoutVersion, buildCachedLines(client, getWidgetLines(client, widget), old),
 					new Size(80, Math.max(lineHeight, (effectCount + 1) * lineHeight)));
 			}
+			case "armor_durability" -> {
+				int itemCount = ArmorDurabilityHudComponent.collectItemCount(client.player);
+				if (itemCount < 1) {
+					itemCount = ArmorDurabilityHudComponent.getPreviewItemCount();
+				}
+				ArmorDurabilityHudComponent.Dims dims = ArmorDurabilityHudComponent.scaledDimensions(client, itemCount);
+				yield new WidgetLayout(this.layoutVersion, List.of(), new Size(dims.width(), dims.height()));
+			}
 			case "item_counter" -> {
 				LocalPlayer player = client.player;
 				List<String> lines = getWidgetLines(client, widget);
@@ -1945,7 +1954,6 @@ public final class ForkClientController {
 			case "biome" -> player == null
 				? List.of("Biome Unknown")
 				: List.of("Biome " + getBiomeText(player));
-			case "armor" -> player == null ? List.of("Armor --") : getArmorLines(player);
 			case "saturation" -> player == null
 				? List.of("Hunger --", "Saturation --")
 				: List.of(
@@ -2213,29 +2221,6 @@ public final class ForkClientController {
 			}
 		}
 		return builder.isEmpty() ? "Unknown" : builder.toString();
-	}
-
-	private List<String> getArmorLines(LocalPlayer player) {
-		return List.of(
-			"Armor " + player.getArmorValue(),
-			"H " + getArmorDurability(player.getItemBySlot(EquipmentSlot.HEAD))
-				+ "  C " + getArmorDurability(player.getItemBySlot(EquipmentSlot.CHEST)),
-			"L " + getArmorDurability(player.getItemBySlot(EquipmentSlot.LEGS))
-				+ "  B " + getArmorDurability(player.getItemBySlot(EquipmentSlot.FEET))
-		);
-	}
-
-	private String getArmorDurability(ItemStack stack) {
-		if (stack.isEmpty()) {
-			return "--";
-		}
-		if (!stack.isDamageableItem()) {
-			return "100%";
-		}
-
-		int remaining = stack.getMaxDamage() - stack.getDamageValue();
-		int percent = Math.max(0, Math.round((remaining * 100.0F) / Math.max(1, stack.getMaxDamage())));
-		return percent + "%";
 	}
 
 	private String getPingText(ServerData server, Minecraft client) {
@@ -3220,6 +3205,7 @@ public final class ForkClientController {
 		w2m.put("measurements", "block_measurement");
 		w2m.put("ping_graph", "ping_graph");
 		w2m.put("tps_display", "server_tps_estimator");
+		w2m.put("armor_durability", "armor_durability");
 		WIDGET_TO_MODULE = Collections.unmodifiableMap(w2m);
 
 		Map<String, String> m2w = new LinkedHashMap<>();

@@ -13,7 +13,7 @@ import org.slf4j.LoggerFactory;
 
 public class ForkClient implements ModInitializer {
     public static final String MOD_ID = "fork-client";
-    public static final String MOD_VERSION = "1.1.3+26.2";
+    public static final String MOD_VERSION = "1.1.4+26.2";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
     @Override

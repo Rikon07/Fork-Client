@@ -12,6 +12,8 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import com.mahidx7.forkclient.ForkClient;
+import com.mahidx7.forkclient.client.hud.ArmorDurabilityHudComponent;
+import com.mahidx7.forkclient.client.modules.ArmorDurabilityConfigScreen;
 import org.lwjgl.glfw.GLFW;
 
 public class ForkClickGuiScreen extends Screen {
@@ -672,7 +674,8 @@ public class ForkClickGuiScreen extends Screen {
 	// ── Mouse events ──────────────────────────────────────────────────────────
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
+		if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT && event.button() != GLFW.GLFW_MOUSE_BUTTON_RIGHT) return false;
+		boolean rightClick = event.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT;
 		double ex = event.x(), ey = event.y();
 		ForkClientController ctrl = ForkClientController.INSTANCE;
 		this.searchFocused = false;
@@ -770,7 +773,11 @@ public class ForkClickGuiScreen extends Screen {
 					int modY = renderY + CAT_TOP_PAD + CAT_HDR_H + 2;
 					for (ForkClientController.ModuleDefinition mod : catModsList.get(idx)) {
 						if (contains(colX, modY, colW, MOD_ROW_H, ex, ey)) {
-							ctrl.toggleModule(mod.id());
+							if (rightClick) {
+								this.openModuleConfig(mod.id());
+							} else {
+								ctrl.toggleModule(mod.id());
+							}
 							return true;
 						}
 						modY += MOD_ROW_H + MOD_GAP;
@@ -905,6 +912,16 @@ public class ForkClickGuiScreen extends Screen {
 	}
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
+	/** Opens the per-module config screen for a module, when one is registered. */
+	private void openModuleConfig(String moduleId) {
+		if (this.minecraft == null) {
+			return;
+		}
+		if (ArmorDurabilityHudComponent.MODULE_ID.equals(moduleId)) {
+			this.minecraft.gui.setScreen(new ArmorDurabilityConfigScreen(this));
+		}
+	}
+
 	private String trimToWidth(String text, int maxWidth) {
 		if (text == null || text.isEmpty() || maxWidth <= 0) return "";
 		if (this.font.width(text) <= maxWidth) return text;
