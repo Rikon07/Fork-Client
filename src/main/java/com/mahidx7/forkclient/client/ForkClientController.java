@@ -3,6 +3,7 @@ package com.mahidx7.forkclient.client;
 import com.mahidx7.forkclient.ForkClient;
 import com.mahidx7.forkclient.client.hud.ArmorDurabilityHudComponent;
 import com.mahidx7.forkclient.client.hud.ArrayListHudComponent;
+import com.mahidx7.forkclient.client.modules.ArmorDurabilityConfigScreen;
 import com.mahidx7.forkclient.client.permissions.FeaturePermissions;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.Window;
@@ -127,6 +128,7 @@ public final class ForkClientController {
 	private KeyMapping.Category keyCategory;
 	private KeyMapping openGuiKey;
 	private KeyMapping openHudEditorKey;
+	private KeyMapping openArmorConfigKey;
 	private KeyMapping zoomKey;
 	private KeyMapping freelookKey;
 	private KeyMapping hideHudKey;
@@ -431,6 +433,9 @@ public final class ForkClientController {
 		this.openHudEditorKey = KeyMappingHelper.registerKeyMapping(
 			new KeyMapping("key.fork-client.open_hud_editor", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_H, this.keyCategory)
 		);
+		this.openArmorConfigKey = KeyMappingHelper.registerKeyMapping(
+			new KeyMapping("key.fork-client.open_armor_config", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K, this.keyCategory)
+		);
 		this.zoomKey = KeyMappingHelper.registerKeyMapping(
 			new KeyMapping("key.fork-client.zoom", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_C, this.keyCategory)
 		);
@@ -484,6 +489,10 @@ public final class ForkClientController {
 
 		while (this.openHudEditorKey.consumeClick()) {
 			toggleHudEditor(client);
+		}
+
+		while (this.openArmorConfigKey.consumeClick()) {
+			openArmorConfig(client);
 		}
 
 		applyBrightnessPlus(client);
@@ -786,6 +795,25 @@ public final class ForkClientController {
 		}
 
 		client.gui.setScreen(new ForkHudEditorScreen());
+	}
+
+	/**
+	 * Opens the Armor Durability config screen. Passes the current screen as the
+	 * parent so the config screen can return to it, mirroring the behavior of the
+	 * module's right-click action in the Click GUI.
+	 */
+	public void openArmorConfig(Minecraft client) {
+		if (client == null || client.gui.screen() instanceof ArmorDurabilityConfigScreen) {
+			return;
+		}
+		client.gui.setScreen(new ArmorDurabilityConfigScreen(client.gui.screen()));
+	}
+
+	/** Display name of the key currently bound to open the Armor Durability config. */
+	public String getArmorConfigKeybindName() {
+		return this.openArmorConfigKey == null
+				? "K"
+				: this.openArmorConfigKey.getTranslatedKeyMessage().getString();
 	}
 
 	public void openHudEditor(Minecraft client) {

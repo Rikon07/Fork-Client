@@ -562,6 +562,13 @@ public class ForkClickGuiScreen extends Screen {
 			textX, y + 8, enabled ? TEXT_PRIMARY : TEXT_SECONDARY, false);
 		g.text(this.font, Component.literal(trimToWidth(mod.description(), maxTextW)),
 			textX, y + 8 + this.font.lineHeight + 3, TEXT_DIM, false);
+
+		// Config keybind hint for modules with a dedicated settings screen
+		if (ArmorDurabilityHudComponent.MODULE_ID.equals(mod.id())) {
+			String hint = "[" + ctrl.getArmorConfigKeybindName() + "] open settings";
+			g.text(this.font, Component.literal(hint),
+				textX, y + 8 + this.font.lineHeight * 2 + 5, ACCENT, false);
+		}
 	}
 
 	/** Renders a toggle switch at (x, y) with a white indicator knob.
