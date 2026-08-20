@@ -59,6 +59,13 @@ public final class MotionBlurPlusModule {
                 && ForkClientController.INSTANCE.isModuleEnabled(MODULE_ID);
     }
 
+    /** Display name of the currently bound key for the settings screen. */
+    public static String getKeybindName() {
+        return openSettingsKey == null
+                ? "M"
+                : openSettingsKey.getTranslatedKeyMessage().getString();
+    }
+
     public static int getStrength() {
         return Math.round(ForkClientController.INSTANCE.getModuleFloatSetting(MODULE_ID, SETTING_STRENGTH, DEFAULT_STRENGTH));
     }

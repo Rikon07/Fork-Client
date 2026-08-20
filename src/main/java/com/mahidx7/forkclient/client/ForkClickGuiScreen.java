@@ -14,6 +14,7 @@ import net.minecraft.network.chat.Component;
 import com.mahidx7.forkclient.ForkClient;
 import com.mahidx7.forkclient.client.hud.ArmorDurabilityHudComponent;
 import com.mahidx7.forkclient.client.modules.ArmorDurabilityConfigScreen;
+import com.mahidx7.forkclient.client.modules.MotionBlurPlusModule;
 import org.lwjgl.glfw.GLFW;
 
 public class ForkClickGuiScreen extends Screen {
@@ -566,6 +567,11 @@ public class ForkClickGuiScreen extends Screen {
 		// Config keybind hint for modules with a dedicated settings screen
 		if (ArmorDurabilityHudComponent.MODULE_ID.equals(mod.id())) {
 			String hint = "[" + ctrl.getArmorConfigKeybindName() + "] open settings";
+			g.text(this.font, Component.literal(hint),
+				textX, y + 8 + this.font.lineHeight * 2 + 5, ACCENT, false);
+		}
+		if (MotionBlurPlusModule.MODULE_ID.equals(mod.id())) {
+			String hint = "[" + MotionBlurPlusModule.getKeybindName() + "] open settings";
 			g.text(this.font, Component.literal(hint),
 				textX, y + 8 + this.font.lineHeight * 2 + 5, ACCENT, false);
 		}

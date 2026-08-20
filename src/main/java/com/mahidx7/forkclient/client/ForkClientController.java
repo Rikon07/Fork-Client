@@ -329,6 +329,7 @@ public final class ForkClientController {
 		addModule("low_shield", "Low Shield", ModuleCategory.VISUAL, "Lowers the shield model in first person to improve visibility.", false);
 		addModule("low_fire", "Low Fire", ModuleCategory.VISUAL, "Shrinks the fire overlay so it does not block your view.", false);
 		addModule("motion_blur_plus", "Motion Blur Plus", ModuleCategory.VISUAL, "Adds a motion blur trail to the rendered frame. Configure via /motionblurplus.", false);
+		addModule("entity_culling", "Entity Culling", ModuleCategory.VISUAL, "Prevents rendering entities hidden behind solid blocks using async path-tracing. Boosts FPS in dense areas.", false);
 
 		addModule("auto_sprint", "Auto Sprint", ModuleCategory.MOVEMENT, "Keeps sprint held while you are in-game.", false);
 		addModule("toggle_sneak", "Toggle Sneak", ModuleCategory.MOVEMENT, "Turns sneak into a toggle.", false);

@@ -18,7 +18,8 @@
 		"GameRendererPoolAccessor",
 		"PostEffectPassBufferAccessor",
 		"PostEffectProcessorPassesAccessor",
-		"LightmapRenderStateExtractorMixin"
+		"LightmapRenderStateExtractorMixin",
+		"LevelRendererMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
