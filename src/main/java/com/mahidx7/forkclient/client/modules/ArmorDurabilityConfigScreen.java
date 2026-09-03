@@ -43,9 +43,6 @@ public final class ArmorDurabilityConfigScreen extends Screen {
 
 	private DynamicSlider hudXSlider;
 	private DynamicSlider hudYSlider;
-	private DynamicSlider scaleSlider;
-	private DynamicSlider spacingSlider;
-	private Button previewToggleButton;
 
 	public ArmorDurabilityConfigScreen(Screen parent) {
 		super(Component.translatable("gui.armour_durability.config.title"));
@@ -78,10 +75,10 @@ public final class ArmorDurabilityConfigScreen extends Screen {
 		this.hudYSlider = this.addRenderableWidget(new HudYSlider(secondColX, y, sliderWidth, sliderHeight));
 
 		y += checkboxGap;
-		this.scaleSlider = this.addRenderableWidget(new ScaleSlider(leftX, y, 360, sliderHeight));
+		this.addRenderableWidget(new ScaleSlider(leftX, y, 360, sliderHeight));
 
 		y += checkboxGap;
-		this.spacingSlider = this.addRenderableWidget(new SpacingSlider(leftX, y, 360, sliderHeight));
+		this.addRenderableWidget(new SpacingSlider(leftX, y, 360, sliderHeight));
 
 		y += rowGap;
 		this.addRenderableWidget(this.buildCheckbox("Horizontal Layout", leftX, y,
@@ -125,7 +122,7 @@ public final class ArmorDurabilityConfigScreen extends Screen {
 				}, this.working.showTurtleShell));
 
 		y += 34;
-		this.previewToggleButton = this.addRenderableWidget(Button.builder(this.getPreviewButtonLabel(),
+		this.addRenderableWidget(Button.builder(this.getPreviewButtonLabel(),
 				button -> {
 					this.showPreview = !this.showPreview;
 					button.setMessage(this.getPreviewButtonLabel());

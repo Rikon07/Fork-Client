@@ -4,6 +4,14 @@ import com.mahidx7.forkclient.ForkClient;
 import com.mahidx7.forkclient.client.hud.ArmorDurabilityHudComponent;
 import com.mahidx7.forkclient.client.hud.ArrayListHudComponent;
 import com.mahidx7.forkclient.client.modules.ArmorDurabilityConfigScreen;
+import com.mahidx7.forkclient.client.modules.building.BlockMeasurementModule;
+import com.mahidx7.forkclient.client.modules.building.BlockPaletteModule;
+import com.mahidx7.forkclient.client.modules.building.BlueprintPreviewModule;
+import com.mahidx7.forkclient.client.modules.building.BuildHeightModule;
+import com.mahidx7.forkclient.client.modules.building.ChunkBorderModule;
+import com.mahidx7.forkclient.client.modules.building.GridOverlayModule;
+import com.mahidx7.forkclient.client.modules.building.MaterialCalculatorModule;
+import com.mahidx7.forkclient.client.modules.building.ShapePreviewModule;
 import com.mahidx7.forkclient.client.permissions.FeaturePermissions;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.Window;
@@ -52,7 +60,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.gizmos.Gizmos;
 import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
@@ -111,9 +118,6 @@ public final class ForkClientController {
 	private int[] minimapCacheColors;
 	private boolean minimapZoomClickDown;
 	private final ArrayList<net.minecraft.world.entity.Entity> minimapEntityBuffer = new ArrayList<>();
-
-	private final GridOverlayCache gridOverlayCache = new GridOverlayCache();
-	private final ChunkBorderCache chunkBorderCache = new ChunkBorderCache();
 
 	private final List<ModuleDefinition> modules = new ArrayList<>();
 	private final Map<String, ModuleDefinition> modulesById = new LinkedHashMap<>();
@@ -210,10 +214,6 @@ public final class ForkClientController {
 	private final List<float[]> cameraPathPoints = new ArrayList<>();
 
 	// ── Building Helpers state ───────────────────────────────────────────
-	private int measureX1, measureY1, measureZ1;
-	private int measureX2, measureY2, measureZ2;
-	private boolean measureFirstSet;
-	private boolean measureSecondSet;
 
 	// ── Multiplayer Utilities state ──────────────────────────────────────
 	private final List<Integer> pingHistory = new ArrayList<>();
@@ -305,12 +305,10 @@ public final class ForkClientController {
 			Minecraft client = Minecraft.getInstance();
 			if (client.player == null || client.level == null) return;
 
-			if (isModuleEnabled("grid_overlay") && FeaturePermissions.canUseRendering()) {
-				renderGridOverlay(client);
-			}
-			if (isModuleEnabled("chunk_border_viewer") && FeaturePermissions.canUseRendering()) {
-				renderChunkBorders(client);
-			}
+			GridOverlayModule.render(client);
+			ChunkBorderModule.render(client);
+			ShapePreviewModule.render(client);
+			BlueprintPreviewModule.render(client);
 		});
 
 		this.initialized = true;
@@ -425,6 +423,10 @@ public final class ForkClientController {
 		addWidget("measurements", "Measurements", 400, 80, false);
 		addWidget("ping_graph", "Ping Graph", 400, 140, false);
 		addWidget("tps_display", "TPS Display", 400, 200, false);
+		addWidget("palette", "Block Palette", 400, 260, false);
+		addWidget("materials", "Material Calculator", 400, 300, false);
+		addWidget("shape_preview", "Shape Preview", 12, 430, false);
+		addWidget("blueprint_preview", "Blueprint Preview", 260, 430, false);
 	}
 
 	private void registerKeyMappings() {
@@ -695,31 +697,7 @@ public final class ForkClientController {
 	}
 
 	private void applyBuildingHelperModules(Minecraft client) {
-		// Block measurement: check for positions
-		if (isModuleEnabled("block_measurement") && client.player != null) {
-			var hitResult = client.hitResult;
-			if (hitResult != null && hitResult.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
-				var blockHit = (net.minecraft.world.phys.BlockHitResult) hitResult;
-				BlockPos pos = blockHit.getBlockPos();
-				if (client.options.keyUse.isDown() && !client.options.keyAttack.isDown()) {
-					if (!this.measureFirstSet) {
-						this.measureX1 = pos.getX();
-						this.measureY1 = pos.getY();
-						this.measureZ1 = pos.getZ();
-						this.measureFirstSet = true;
-						this.measureSecondSet = false;
-					}
-				}
-				if (client.options.keyAttack.isDown() && !client.options.keyUse.isDown()) {
-					if (this.measureFirstSet) {
-						this.measureX2 = pos.getX();
-						this.measureY2 = pos.getY();
-						this.measureZ2 = pos.getZ();
-						this.measureSecondSet = true;
-					}
-				}
-			}
-		}
+		BlockMeasurementModule.onTick(client);
 	}
 
 	private void applyMultiplayerModules(Minecraft client) {
@@ -2026,39 +2004,8 @@ public final class ForkClientController {
 					"Status " + lockInfo + (this.timelapseCompassLock >= 0 ? " N" + this.timelapseCompassLock : "")
 				);
 			}
-			case "build_height" -> {
-				if (player == null) {
-					yield List.of("Y --", "Limit --", "Left --");
-				}
-				int y = (int) Math.floor(player.getY());
-				int buildMax = 320;
-				int buildMin = -64;
-				int remaining = buildMax - y;
-				yield List.of(
-					"Y " + y,
-					"Limit " + buildMax + " / " + buildMin,
-					"Left " + remaining
-				);
-			}
-			case "measurements" -> {
-				if (!this.measureSecondSet) {
-					yield List.of("Measurement --", "Use: Attack + Use");
-				}
-				int dx = Math.abs(this.measureX2 - this.measureX1) + 1;
-				int dy = Math.abs(this.measureY2 - this.measureY1) + 1;
-				int dz = Math.abs(this.measureZ2 - this.measureZ1) + 1;
-				int volume = dx * dy * dz;
-				double dist = Math.sqrt(
-					Math.pow(this.measureX2 - this.measureX1, 2) +
-					Math.pow(this.measureY2 - this.measureY1, 2) +
-					Math.pow(this.measureZ2 - this.measureZ1, 2)
-				);
-				yield List.of(
-					dx + " x " + dy + " x " + dz,
-					"Vol " + volume,
-					String.format(Locale.ROOT, "Dist %.1f", dist)
-				);
-			}
+			case "build_height" -> BuildHeightModule.getLines(player);
+			case "measurements" -> BlockMeasurementModule.getLines();
 			case "ping_graph" -> {
 				if (this.pingHistory.isEmpty()) {
 					yield List.of("Ping --", "Avg --", "Min --", "Max --");
@@ -2084,6 +2031,10 @@ public final class ForkClientController {
 					"Estimate only"
 				);
 			}
+			case "palette" -> BlockPaletteModule.getLines(client);
+			case "materials" -> MaterialCalculatorModule.getLines();
+			case "shape_preview" -> ShapePreviewModule.getLines();
+			case "blueprint_preview" -> BlueprintPreviewModule.getLines();
 			default -> List.of(widget.title());
 		};
 	}
@@ -2560,120 +2511,6 @@ public final class ForkClientController {
 		return Collections.unmodifiableList(this.cameraPathPoints);
 	}
 
-	// ==================== BUILDING HELPERS ====================
-
-	public int getMeasureX1() { return this.measureX1; }
-	public int getMeasureY1() { return this.measureY1; }
-	public int getMeasureZ1() { return this.measureZ1; }
-	public int getMeasureX2() { return this.measureX2; }
-	public int getMeasureY2() { return this.measureY2; }
-	public int getMeasureZ2() { return this.measureZ2; }
-	public boolean isMeasureComplete() { return this.measureSecondSet; }
-
-	public void clearMeasurement() {
-		this.measureFirstSet = false;
-		this.measureSecondSet = false;
-	}
-
-	private void renderGridOverlay(Minecraft client) {
-		LocalPlayer player = client.player;
-		if (player == null || client.level == null) return;
-
-		int px = (int) Math.floor(player.getX());
-		int py = (int) Math.floor(player.getY());
-		int pz = (int) Math.floor(player.getZ());
-
-		// The overlay geometry only depends on the player's block position and
-		// the level, so the Vec3 line endpoints are cached and re-submitted each
-		// frame. This removes ~75 Vec3 allocations per frame. Vec3 is immutable,
-		// so reusing the cached instances across frames is always safe.
-		if (this.gridOverlayCache.level != client.level
-			|| this.gridOverlayCache.px != px
-			|| this.gridOverlayCache.py != py
-			|| this.gridOverlayCache.pz != pz) {
-			this.gridOverlayCache.level = client.level;
-			this.gridOverlayCache.px = px;
-			this.gridOverlayCache.py = py;
-			this.gridOverlayCache.pz = pz;
-			this.gridOverlayCache.lines.clear();
-
-			int range = 16;
-			int gridColor = 0x44FFFF00;
-			float lineHeight = 0.01F;
-
-			for (int x = px - range; x <= px + range; x++) {
-				this.gridOverlayCache.lines.add(new GizmoLine(new Vec3(x, py - 0.001, pz - range), new Vec3(x, py - 0.001, pz + range), gridColor, lineHeight));
-			}
-
-			for (int z = pz - range; z <= pz + range; z++) {
-				this.gridOverlayCache.lines.add(new GizmoLine(new Vec3(px - range, py - 0.001, z), new Vec3(px + range, py - 0.001, z), gridColor, lineHeight));
-			}
-
-			int chunkColor = 0x55FF8800;
-			int playerChunkX = px >> 4;
-			int playerChunkZ = pz >> 4;
-			for (int cx = playerChunkX - 2; cx <= playerChunkX + 2; cx++) {
-				int blockX = cx << 4;
-				this.gridOverlayCache.lines.add(new GizmoLine(new Vec3(blockX, py - 0.002, pz - range), new Vec3(blockX, py - 0.002, pz + range), chunkColor, lineHeight + 0.01F));
-				this.gridOverlayCache.lines.add(new GizmoLine(new Vec3(blockX + 16, py - 0.002, pz - range), new Vec3(blockX + 16, py - 0.002, pz + range), chunkColor, lineHeight + 0.01F));
-			}
-			for (int cz = playerChunkZ - 2; cz <= playerChunkZ + 2; cz++) {
-				int blockZ = cz << 4;
-				this.gridOverlayCache.lines.add(new GizmoLine(new Vec3(px - range, py - 0.002, blockZ), new Vec3(px + range, py - 0.002, blockZ), chunkColor, lineHeight + 0.01F));
-				this.gridOverlayCache.lines.add(new GizmoLine(new Vec3(px - range, py - 0.002, blockZ + 16), new Vec3(px + range, py - 0.002, blockZ + 16), chunkColor, lineHeight + 0.01F));
-			}
-		}
-
-		for (GizmoLine line : this.gridOverlayCache.lines) {
-			Gizmos.line(line.from, line.to, line.color, line.width);
-		}
-	}
-
-	private void renderChunkBorders(Minecraft client) {
-		LocalPlayer player = client.player;
-		if (player == null || client.level == null) return;
-
-		int px = (int) Math.floor(player.getX());
-		int pz = (int) Math.floor(player.getZ());
-
-		int playerChunkX = px >> 4;
-		int playerChunkZ = pz >> 4;
-
-		// Same caching approach as the grid overlay: border line geometry is
-		// rebuilt only when the player crosses into a new chunk or changes level,
-		// removing ~324 Vec3 allocations per frame when enabled.
-		if (this.chunkBorderCache.level != client.level
-			|| this.chunkBorderCache.px != playerChunkX
-			|| this.chunkBorderCache.pz != playerChunkZ) {
-			this.chunkBorderCache.level = client.level;
-			this.chunkBorderCache.px = playerChunkX;
-			this.chunkBorderCache.pz = playerChunkZ;
-			this.chunkBorderCache.lines.clear();
-
-			int viewDist = 4;
-			int lineColor = 0x88FF3333;
-			float lineWidth = 0.05F;
-			int yTop = 320;
-			int yBottom = -64;
-
-			for (int cx = playerChunkX - viewDist; cx <= playerChunkX + viewDist; cx++) {
-				for (int cz = playerChunkZ - viewDist; cz <= playerChunkZ + viewDist; cz++) {
-					int bx = cx << 4;
-					int bz = cz << 4;
-
-					this.chunkBorderCache.lines.add(new GizmoLine(new Vec3(bx, yBottom, bz), new Vec3(bx, yTop, bz), lineColor, lineWidth));
-					this.chunkBorderCache.lines.add(new GizmoLine(new Vec3(bx + 16, yBottom, bz), new Vec3(bx + 16, yTop, bz), lineColor, lineWidth));
-					this.chunkBorderCache.lines.add(new GizmoLine(new Vec3(bx, yBottom, bz + 16), new Vec3(bx, yTop, bz + 16), lineColor, lineWidth));
-					this.chunkBorderCache.lines.add(new GizmoLine(new Vec3(bx + 16, yBottom, bz + 16), new Vec3(bx + 16, yTop, bz + 16), lineColor, lineWidth));
-				}
-			}
-		}
-
-		for (GizmoLine line : this.chunkBorderCache.lines) {
-			Gizmos.line(line.from, line.to, line.color, line.width);
-		}
-	}
-
 	// ==================== MULTIPLAYER ====================
 
 	public List<Integer> getPingHistory() {
@@ -3007,6 +2844,17 @@ public final class ForkClientController {
 			properties.setProperty("quickmsg." + i, this.quickMessages.get(i));
 		}
 
+		// ── Block palette ───────────────────────────────────────────────
+		java.util.List<String[]> paletteData = BlockPaletteModule.savePalette();
+		properties.setProperty("palette.count", Integer.toString(paletteData.size()));
+		for (int i = 0; i < paletteData.size(); i++) {
+			String[] entry = paletteData.get(i);
+			String prefix = "palette." + i + ".";
+			properties.setProperty(prefix + "block", entry.length > 0 ? entry[0] : "");
+			properties.setProperty(prefix + "group", entry.length > 1 ? entry[1] : "");
+			properties.setProperty(prefix + "fav", entry.length > 2 ? entry[2] : "false");
+		}
+
 		// ── Brightness Plus ─────────────────────────────────────────────
 		properties.setProperty("brightness_plus.value", Double.toString(this.brightnessPlusValue));
 		properties.setProperty("brightness_plus.min", Double.toString(this.brightnessPlusMin));
@@ -3197,6 +3045,23 @@ public final class ForkClientController {
 		this.brightnessPlusStep = parseDouble(properties.getProperty("brightness_plus.step"), this.brightnessPlusStep);
 		this.brightnessPlusValue = clampBrightness(parseDouble(properties.getProperty("brightness_plus.value"), this.brightnessPlusValue));
 
+		// ── Block palette ───────────────────────────────────────────────
+		java.util.List<String[]> paletteData = new java.util.ArrayList<>();
+		String paletteCountStr = properties.getProperty("palette.count");
+		if (paletteCountStr != null) {
+			int count = parseInt(paletteCountStr, 0);
+			for (int i = 0; i < count; i++) {
+				String prefix = "palette." + i + ".";
+				String block = properties.getProperty(prefix + "block", "");
+				String group = properties.getProperty(prefix + "group", "Other");
+				String fav = properties.getProperty(prefix + "fav", "false");
+				if (!block.isBlank()) {
+					paletteData.add(new String[]{block, group, fav});
+				}
+			}
+		}
+		BlockPaletteModule.loadPalette(paletteData);
+
 		syncWidgetBackedModules();
 	}
 
@@ -3235,6 +3100,10 @@ public final class ForkClientController {
 		w2m.put("ping_graph", "ping_graph");
 		w2m.put("tps_display", "server_tps_estimator");
 		w2m.put("armor_durability", "armor_durability");
+		w2m.put("palette", "block_palette_viewer");
+		w2m.put("materials", "material_calculator");
+		w2m.put("shape_preview", "shape_preview");
+		w2m.put("blueprint_preview", "blueprint_preview");
 		WIDGET_TO_MODULE = Collections.unmodifiableMap(w2m);
 
 		Map<String, String> m2w = new LinkedHashMap<>();
@@ -3443,27 +3312,6 @@ public final class ForkClientController {
 			this.lines = lines;
 			this.size = size;
 		}
-	}
-
-	/** Cached geometry for one gizmo line (immutable Vec3 endpoints). */
-	private record GizmoLine(Vec3 from, Vec3 to, int color, float width) {
-	}
-
-	/** Cache of grid overlay line geometry, keyed by player block position + level. */
-	private static final class GridOverlayCache {
-		Level level;
-		int px;
-		int py;
-		int pz;
-		final List<GizmoLine> lines = new ArrayList<>();
-	}
-
-	/** Cache of chunk border line geometry, keyed by player chunk position + level. */
-	private static final class ChunkBorderCache {
-		Level level;
-		int px;
-		int pz;
-		final List<GizmoLine> lines = new ArrayList<>();
 	}
 
 	public record Waypoint(String name, int x, int y, int z, String dimension, int color, boolean enabled) {
