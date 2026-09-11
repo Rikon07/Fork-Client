@@ -5,6 +5,7 @@ import com.mahidx7.forkclient.client.modules.MotionBlurPlusModule;
 import com.mahidx7.forkclient.client.permissions.FeaturePermissions;
 import com.mahidx7.forkclient.network.ForkClientHandshakePayload;
 import com.mahidx7.forkclient.network.MovementPermissionsPayload;
+import com.mahidx7.forkclient.optimization.OptimizationManager;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -28,10 +29,12 @@ public class ForkClientClient implements ClientModInitializer {
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             client.execute(FeaturePermissions::reset);
+            OptimizationManager.INSTANCE.reload();
         });
 
         ForkClientController.INSTANCE.initialize();
         MotionBlurPlusModule.initialize();
+        OptimizationManager.INSTANCE.initialize();
         ForkClient.LOGGER.info("Fork Client initialized.");
     }
 }

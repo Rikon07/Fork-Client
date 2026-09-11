@@ -19,7 +19,9 @@
 		"PostEffectPassBufferAccessor",
 		"PostEffectProcessorPassesAccessor",
 		"LightmapRenderStateExtractorMixin",
-		"LevelRendererMixin"
+		"LevelRendererMixin",
+		"FogRendererMixin",
+		"LevelExtractorMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
