@@ -8,7 +8,7 @@
 		"Mahidx7"
 	],
 	"contact": {
-		"homepage": "https://gitlab.com/mh77mahid",
+		"homepage": "https://forkclient.vercel.app/",
 		"sources": "https://gitlab.com/mh77mahid/fork-client",
 		"issues": "https://gitlab.com/mh77mahid/fork-client/-/issues"
 	},
@@ -37,7 +37,7 @@
 	],
 "depends": {
 		"fabricloader": ">=0.19.5",
-		"minecraft": "~26.2",
+		"minecraft": "~26.3",
 		"java": ">=21",
 		"fabric-api": "*"
 	}

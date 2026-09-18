@@ -9,7 +9,7 @@ import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.packs.PackType;
-import org.lwjgl.glfw.GLFW;
+// GLFW removed - using InputConstants
 
 import java.util.Locale;
 
@@ -43,7 +43,7 @@ public final class MotionBlurPlusModule {
 
     private static void registerKeybind() {
         openSettingsKey = KeyMappingHelper.registerKeyMapping(
-                new KeyMapping(KEYBIND_TRANSLATION, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_M,
+                new KeyMapping(KEYBIND_TRANSLATION, InputConstants.KEY_M,
                         ForkClientController.INSTANCE.getKeyCategory()));
     }
 

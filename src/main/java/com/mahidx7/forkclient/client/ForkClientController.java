@@ -18,6 +18,7 @@ import com.mojang.blaze3d.platform.Window;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -61,7 +62,7 @@ import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.util.Mth;
-import org.lwjgl.glfw.GLFW;
+// GLFW removed in 26.3 (SDL migration) - using InputConstants instead
 
 public final class ForkClientController {
 	public static final ForkClientController INSTANCE = new ForkClientController();
@@ -87,6 +88,31 @@ public final class ForkClientController {
 		"good luck everyone",
 		"have a great game"
 	);
+	private static final Method INPUT_IS_KEY_DOWN_INT = resolveIsKeyDownMethod();
+
+	private static Method resolveIsKeyDownMethod() {
+		try {
+			return InputConstants.class.getMethod("isKeyDown", int.class);
+		} catch (NoSuchMethodException ignored) {
+			try {
+				return InputConstants.class.getMethod("isKeyDown", Window.class, int.class);
+			} catch (NoSuchMethodException e) {
+				throw new IllegalStateException("InputConstants.isKeyDown is unavailable in this Minecraft version", e);
+			}
+		}
+	}
+
+	private static boolean isKeyDownCompat(int keyCode) {
+		try {
+			if (INPUT_IS_KEY_DOWN_INT.getParameterCount() == 1) {
+				return (boolean) INPUT_IS_KEY_DOWN_INT.invoke(null, keyCode);
+			}
+			Window window = Minecraft.getInstance().getWindow();
+			return (boolean) INPUT_IS_KEY_DOWN_INT.invoke(null, window, keyCode);
+		} catch (ReflectiveOperationException e) {
+			return false;
+		}
+	}
 
 	// ── Performance & caching state ────────────────────────────────────────
 	// Version counters let cheap checks decide when cached data is stale,
@@ -431,34 +457,34 @@ public final class ForkClientController {
 
 	private void registerKeyMappings() {
 		this.openGuiKey = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.fork-client.open_gui", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, this.keyCategory)
+			new KeyMapping("key.fork-client.open_gui", InputConstants.KEY_RSHIFT, this.keyCategory)
 		);
 		this.openHudEditorKey = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.fork-client.open_hud_editor", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_H, this.keyCategory)
+			new KeyMapping("key.fork-client.open_hud_editor", InputConstants.KEY_H, this.keyCategory)
 		);
 		this.openArmorConfigKey = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.fork-client.open_armor_config", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K, this.keyCategory)
+			new KeyMapping("key.fork-client.open_armor_config", InputConstants.KEY_K, this.keyCategory)
 		);
 		this.zoomKey = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.fork-client.zoom", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_C, this.keyCategory)
+			new KeyMapping("key.fork-client.zoom", InputConstants.KEY_C, this.keyCategory)
 		);
 		this.freelookKey = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.fork-client.freelook", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_V, this.keyCategory)
+			new KeyMapping("key.fork-client.freelook", InputConstants.KEY_V, this.keyCategory)
 		);
 		this.hideHudKey = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.fork-client.hide_hud", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F1, this.keyCategory)
+			new KeyMapping("key.fork-client.hide_hud", InputConstants.KEY_F1, this.keyCategory)
 		);
 		this.cameraPathKey = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.fork-client.camera_path", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_J, this.keyCategory)
+			new KeyMapping("key.fork-client.camera_path", InputConstants.KEY_J, this.keyCategory)
 		);
 		this.brightnessToggleKey = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.fork-client.brightness_toggle", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_B, this.keyCategory)
+			new KeyMapping("key.fork-client.brightness_toggle", InputConstants.KEY_B, this.keyCategory)
 		);
 		this.brightnessRaiseKey = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.fork-client.brightness_raise", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_EQUAL, this.keyCategory)
+			new KeyMapping("key.fork-client.brightness_raise", InputConstants.KEY_EQUALS, this.keyCategory)
 		);
 		this.brightnessLowerKey = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.fork-client.brightness_lower", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_MINUS, this.keyCategory)
+			new KeyMapping("key.fork-client.brightness_lower", InputConstants.KEY_MINUS, this.keyCategory)
 		);
 	}
 
@@ -737,10 +763,22 @@ public final class ForkClientController {
 			}
 		}
 
-		// Quick messages via numpad keys (1-9)
+		// Quick messages via numpad keys (1-9) - TODO SDL migration: verify numpad keycodes sequential
 		if (isModuleEnabled("quick_messages") && FeaturePermissions.canUseUtilities()) {
 			for (int i = 0; i < Math.min(9, this.quickMessages.size()); i++) {
-				boolean keyDown = InputConstants.isKeyDown(client.getWindow(), GLFW.GLFW_KEY_KP_1 + i);
+				int kpKey = switch (i) {
+					case 0 -> InputConstants.KEY_NUMPAD1;
+					case 1 -> InputConstants.KEY_NUMPAD2;
+					case 2 -> InputConstants.KEY_NUMPAD3;
+					case 3 -> InputConstants.KEY_NUMPAD4;
+					case 4 -> InputConstants.KEY_NUMPAD5;
+					case 5 -> InputConstants.KEY_NUMPAD6;
+					case 6 -> InputConstants.KEY_NUMPAD7;
+					case 7 -> InputConstants.KEY_NUMPAD8;
+					case 8 -> InputConstants.KEY_NUMPAD9;
+					default -> InputConstants.KEY_NUMPAD1;
+				};
+				boolean keyDown = isKeyDownCompat(kpKey);
 				if (keyDown && !this.quickMessageKeyWasDown[i]) {
 					String msg = this.quickMessages.get(i);
 					if (client.getConnection() != null) {
@@ -844,12 +882,12 @@ public final class ForkClientController {
 
 	private void adjustBrightnessPlus(Minecraft client, boolean increase) {
 		double step = this.brightnessPlusStep;
-		if (InputConstants.isKeyDown(client.getWindow(), GLFW.GLFW_KEY_LEFT_SHIFT)
-				|| InputConstants.isKeyDown(client.getWindow(), GLFW.GLFW_KEY_RIGHT_SHIFT)) {
+		if (isKeyDownCompat(InputConstants.KEY_LSHIFT)
+				|| isKeyDownCompat(InputConstants.KEY_RSHIFT)) {
 			step *= 5.0;
 		}
-		if (InputConstants.isKeyDown(client.getWindow(), GLFW.GLFW_KEY_LEFT_CONTROL)
-				|| InputConstants.isKeyDown(client.getWindow(), GLFW.GLFW_KEY_RIGHT_CONTROL)) {
+		if (isKeyDownCompat(InputConstants.KEY_LCONTROL)
+				|| isKeyDownCompat(InputConstants.KEY_RCONTROL)) {
 			step *= 0.2;
 		}
 		double newValue = clampBrightness(increase ? this.brightnessPlusValue + step : this.brightnessPlusValue - step);
@@ -995,12 +1033,12 @@ public final class ForkClientController {
 		// Minecraft clears KeyMapping states when a screen is open, so we read
 		// the physical GLFW key state directly and apply movement manually.
 		LocalPlayer player = client.player;
-		Window window = client.getWindow();
-		boolean forward = InputConstants.isKeyDown(window, InputConstants.KEY_W);
-		boolean back    = InputConstants.isKeyDown(window, InputConstants.KEY_S);
-		boolean left    = InputConstants.isKeyDown(window, InputConstants.KEY_A);
-		boolean right   = InputConstants.isKeyDown(window, InputConstants.KEY_D);
-		boolean jump    = InputConstants.isKeyDown(window, InputConstants.KEY_SPACE);
+		// Window unused after SDL migration - isKeyDown(int) no longer needs window
+		boolean forward = isKeyDownCompat(InputConstants.KEY_W);
+		boolean back    = isKeyDownCompat(InputConstants.KEY_S);
+		boolean left    = isKeyDownCompat(InputConstants.KEY_A);
+		boolean right   = isKeyDownCompat(InputConstants.KEY_D);
+		boolean jump    = isKeyDownCompat(InputConstants.KEY_SPACE);
 		if (!forward && !back && !left && !right && !jump) return;
 
 		float yRot = player.getYRot();
@@ -1583,7 +1621,7 @@ public final class ForkClientController {
 		}
 
 		// Fire once per press edge so holding the button does not cycle zoom.
-		boolean leftDown = GLFW.glfwGetMouseButton(client.getWindow().handle(), GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+		boolean leftDown = isKeyDownCompat(InputConstants.MOUSE_BUTTON_LEFT);
 		if (!leftDown || this.minimapZoomClickDown) {
 			this.minimapZoomClickDown = leftDown;
 			return;

@@ -1,7 +1,6 @@
 package com.mahidx7.forkclient.mixin;
 
 import com.mahidx7.forkclient.optimization.OptimizationManager;
-import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.renderer.GameRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -22,7 +21,7 @@ public class FogRendererMixin {
 
     @Unique
     @Inject(method = "render", at = @At("HEAD"))
-    private void forkClient$captureFogParams(DeltaTracker deltaTracker, boolean bl, CallbackInfo ci) {
+    private void forkClient$captureFogParams(CallbackInfo ci) {
         OptimizationManager manager = OptimizationManager.INSTANCE;
         if (!manager.isEnabled()) return;
 

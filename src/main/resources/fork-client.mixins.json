@@ -7,7 +7,6 @@
 		"GameRendererMixin",
 		"ClientInputMixin",
 		"VelocityMixin",
-		"ItemInHandRendererMixin",
 		"ScreenEffectRendererMixin",
 		"CameraMixin",
 		"LivingEntityRendererMixin",

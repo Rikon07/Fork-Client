@@ -15,7 +15,7 @@ import com.mahidx7.forkclient.ForkClient;
 import com.mahidx7.forkclient.client.hud.ArmorDurabilityHudComponent;
 import com.mahidx7.forkclient.client.modules.ArmorDurabilityConfigScreen;
 import com.mahidx7.forkclient.client.modules.MotionBlurPlusModule;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 public class ForkClickGuiScreen extends Screen {
 
@@ -687,8 +687,8 @@ public class ForkClickGuiScreen extends Screen {
 	// ── Mouse events ──────────────────────────────────────────────────────────
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT && event.button() != GLFW.GLFW_MOUSE_BUTTON_RIGHT) return false;
-		boolean rightClick = event.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT;
+		if (event.button() != InputConstants.MOUSE_BUTTON_LEFT && event.button() != InputConstants.MOUSE_BUTTON_RIGHT) return false;
+		boolean rightClick = event.button() == InputConstants.MOUSE_BUTTON_RIGHT;
 		double ex = event.x(), ey = event.y();
 		ForkClientController ctrl = ForkClientController.INSTANCE;
 		this.searchFocused = false;
@@ -889,7 +889,7 @@ public class ForkClickGuiScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(KeyEvent event) {
-		if (event.key() == GLFW.GLFW_KEY_ESCAPE) {
+		if (event.key() == InputConstants.KEY_ESCAPE) {
 			if (this.searchFocused) {
 				this.searchFocused = false;
 				return true;
@@ -897,7 +897,7 @@ public class ForkClickGuiScreen extends Screen {
 			this.minecraft.gui.setScreen(null);
 			return true;
 		}
-		if (this.searchFocused && event.key() == GLFW.GLFW_KEY_BACKSPACE) {
+		if (this.searchFocused && event.key() == InputConstants.KEY_BACKSPACE) {
 			String q = ForkClientController.INSTANCE.getSearchQuery();
 			if (!q.isEmpty()) {
 				ForkClientController.INSTANCE.setSearchQuery(q.substring(0, q.length() - 1));

@@ -9,7 +9,7 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FontDescription;
 import com.mahidx7.forkclient.ForkClient;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 public class ForkHudEditorScreen extends Screen {
 	private static final int SIDEBAR_MARGIN = 20;
@@ -93,12 +93,12 @@ public class ForkHudEditorScreen extends Screen {
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
 		Layout layout = layout();
-		if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT && event.button() != GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+		if (event.button() != InputConstants.MOUSE_BUTTON_LEFT && event.button() != InputConstants.MOUSE_BUTTON_RIGHT) {
 			return false;
 		}
 
 		if (contains(layout.buttonX, layout.returnButtonY, layout.buttonWidth, BUTTON_HEIGHT, event.x(), event.y())) {
-			if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+			if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) {
 				return false;
 			}
 			this.minecraft.gui.setScreen(new ForkClickGuiScreen());
@@ -106,7 +106,7 @@ public class ForkHudEditorScreen extends Screen {
 		}
 
 		if (contains(layout.buttonX, layout.closeButtonY, layout.buttonWidth, BUTTON_HEIGHT, event.x(), event.y())) {
-			if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+			if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) {
 				return false;
 			}
 			this.minecraft.gui.setScreen(null);
@@ -118,12 +118,12 @@ public class ForkHudEditorScreen extends Screen {
 			return false;
 		}
 
-		if (event.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+		if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
 			ForkClientController.INSTANCE.toggleWidget(target);
 			return true;
 		}
 
-		if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+		if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
 			this.draggingWidget = target;
 			return true;
 		}
@@ -133,7 +133,7 @@ public class ForkHudEditorScreen extends Screen {
 
 	@Override
 	public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
-		if (this.draggingWidget == null || event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+		if (this.draggingWidget == null || event.button() != InputConstants.MOUSE_BUTTON_LEFT) {
 			return false;
 		}
 
@@ -147,7 +147,7 @@ public class ForkHudEditorScreen extends Screen {
 
 	@Override
 	public boolean mouseReleased(MouseButtonEvent event) {
-		if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.draggingWidget != null) {
+		if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && this.draggingWidget != null) {
 			this.draggingWidget = null;
 			ForkClientController.INSTANCE.saveConfig();
 			return true;
@@ -158,8 +158,8 @@ public class ForkHudEditorScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(KeyEvent event) {
-		if (event.key() == GLFW.GLFW_KEY_ESCAPE || event.key() == GLFW.GLFW_KEY_H) {
-			if (event.key() == GLFW.GLFW_KEY_H) {
+		if (event.key() == InputConstants.KEY_ESCAPE || event.key() == InputConstants.KEY_H) {
+			if (event.key() == InputConstants.KEY_H) {
 				ForkClientController.INSTANCE.consumeHudEditorKeyClick();
 			}
 			this.minecraft.gui.setScreen(null);

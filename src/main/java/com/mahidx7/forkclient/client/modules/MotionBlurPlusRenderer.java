@@ -4,8 +4,6 @@ import com.mahidx7.forkclient.ForkClient;
 import com.mahidx7.forkclient.mixin.GameRendererPoolAccessor;
 import com.mahidx7.forkclient.mixin.PostEffectPassBufferAccessor;
 import com.mahidx7.forkclient.mixin.PostEffectProcessorPassesAccessor;
-import com.mojang.blaze3d.buffers.GpuBuffer;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.buffers.Std140Builder;
 import com.mojang.blaze3d.framegraph.FrameGraphBuilder;
 import com.mojang.blaze3d.pipeline.RenderTarget;
@@ -17,9 +15,13 @@ import net.minecraft.client.renderer.PostChain;
 import net.minecraft.client.renderer.PostPass;
 import net.minecraft.resources.Identifier;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * Applies the Motion Blur Plus temporal frame blend by processing the
@@ -32,11 +34,11 @@ public final class MotionBlurPlusRenderer {
     private static final Identifier EFFECT_ID = Identifier.fromNamespaceAndPath("fork-client", "frame_blend");
     private static final String PARAMETER_BLOCK = "BlurPlusParams";
 
-    private static final int PARAMETER_BUFFER_USAGE = GpuBuffer.USAGE_UNIFORM | GpuBuffer.USAGE_MAP_WRITE;
+    private static final int PARAMETER_BUFFER_USAGE = resolveUsage("USAGE_UNIFORM") | resolveUsage("USAGE_MAP_WRITE");
     private static final long PARAMETER_BUFFER_SIZE = 16L;
 
     private static PostChain loadedEffect;
-    private static GpuBuffer parameterBuffer;
+    private static Object parameterBuffer;
     private static boolean historyReady;
     private static boolean loadFailureLogged;
     private static int knownWidth;
@@ -90,7 +92,7 @@ public final class MotionBlurPlusRenderer {
     public static void invalidate() {
         loadedEffect = null;
         if (parameterBuffer != null) {
-            parameterBuffer.close();
+            closeQuietly(parameterBuffer);
             parameterBuffer = null;
         }
         loadFailureLogged = false;
@@ -98,7 +100,7 @@ public final class MotionBlurPlusRenderer {
     }
 
     private static PostChain prepareEffect(Minecraft client) {
-        if (parameterBuffer != null && parameterBuffer.isClosed()) {
+        if (parameterBuffer != null && isClosed(parameterBuffer)) {
             invalidate();
         }
         if (loadedEffect != null && parameterBuffer != null) {
@@ -107,8 +109,7 @@ public final class MotionBlurPlusRenderer {
         try {
             loadedEffect = Objects.requireNonNull(
                     client.getShaderManager().getPostChain(EFFECT_ID, Set.of(LevelTargetBundle.MAIN_TARGET_ID)));
-            parameterBuffer = RenderSystem.getDevice().createBuffer(
-                    () -> "fork-client motion blur parameters", PARAMETER_BUFFER_USAGE, PARAMETER_BUFFER_SIZE);
+            parameterBuffer = createParameterBuffer();
             bindParameterBuffer(loadedEffect, parameterBuffer);
             loadFailureLogged = false;
             return loadedEffect;
@@ -121,23 +122,96 @@ public final class MotionBlurPlusRenderer {
         }
     }
 
-    private static void bindParameterBuffer(PostChain effect, GpuBuffer buffer) {
+    private static void bindParameterBuffer(PostChain effect, Object buffer) {
         for (PostPass pass : ((PostEffectProcessorPassesAccessor) effect).forkClient$getPasses()) {
-            Map<String, GpuBuffer> uniformBuffers = ((PostEffectPassBufferAccessor) pass).forkClient$getUniformBuffers();
+            Map<String, Object> uniformBuffers = ((PostEffectPassBufferAccessor) pass).forkClient$getUniformBuffers();
             if (!uniformBuffers.containsKey(PARAMETER_BLOCK)) {
                 continue;
             }
-            GpuBuffer previous = uniformBuffers.put(PARAMETER_BLOCK, buffer);
+            Object previous = uniformBuffers.put(PARAMETER_BLOCK, buffer);
             if (previous != null && previous != buffer) {
-                previous.close();
+                closeQuietly(previous);
             }
         }
     }
 
     private static void uploadHistoryWeight(float weight) {
-        try (GpuBufferSlice.MappedView mappedView = parameterBuffer.map(false, true)) {
-            Std140Builder.intoBuffer(mappedView.data()).putFloat(weight);
+        Object mappedView = invoke(parameterBuffer, "map", false, true);
+        try {
+            ByteBuffer data = (ByteBuffer) invoke(mappedView, "data");
+            Std140Builder.intoBuffer(data).putFloat(weight);
+        } catch (RuntimeException e) {
+            ForkClient.LOGGER.error("Unable to upload motion blur parameters", e);
+        } finally {
+            closeQuietly(mappedView);
         }
+    }
+
+    private static Object createParameterBuffer() {
+        try {
+            Object device = RenderSystem.getDevice();
+            Method createBuffer = device.getClass().getMethod("createBuffer", Supplier.class, int.class, long.class);
+            return createBuffer.invoke(device, (Supplier<String>) () -> "fork-client motion blur parameters",
+                    PARAMETER_BUFFER_USAGE, PARAMETER_BUFFER_SIZE);
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException("Unable to create motion blur parameter buffer", e);
+        }
+    }
+
+    private static boolean isClosed(Object buffer) {
+        try {
+            return (boolean) buffer.getClass().getMethod("isClosed").invoke(buffer);
+        } catch (ReflectiveOperationException e) {
+            return false;
+        }
+    }
+
+    private static void closeQuietly(Object buffer) {
+        try {
+            if (buffer != null) {
+                Method close = buffer.getClass().getMethod("close");
+                close.invoke(buffer);
+            }
+        } catch (ReflectiveOperationException ignored) {
+        }
+    }
+
+    private static int resolveUsage(String constantName) {
+        try {
+            Class<?> gpuBufferClass = Class.forName("com.mojang.renderpearl.api.buffers.GpuBuffer");
+            Field usageField = gpuBufferClass.getField(constantName);
+            return usageField.getInt(null);
+        } catch (ReflectiveOperationException e) {
+            return 0;
+        }
+    }
+
+    private static Object invoke(Object target, String methodName, Object... args) {
+        if (target == null) {
+            return null;
+        }
+        Class<?>[] parameterTypes = new Class<?>[args.length];
+        for (int i = 0; i < args.length; i++) {
+            parameterTypes[i] = args[i] == null ? Object.class : primitiveType(args[i].getClass());
+        }
+        try {
+            Method method = target.getClass().getMethod(methodName, parameterTypes);
+            return method.invoke(target, args);
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException("Failed to invoke " + methodName + " on " + target.getClass().getName(), e);
+        }
+    }
+
+    private static Class<?> primitiveType(Class<?> type) {
+        if (Boolean.class.equals(type)) return boolean.class;
+        if (Byte.class.equals(type)) return byte.class;
+        if (Short.class.equals(type)) return short.class;
+        if (Integer.class.equals(type)) return int.class;
+        if (Long.class.equals(type)) return long.class;
+        if (Float.class.equals(type)) return float.class;
+        if (Double.class.equals(type)) return double.class;
+        if (Character.class.equals(type)) return char.class;
+        return type;
     }
 
     private static void resetTemporalState() {
