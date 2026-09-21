@@ -37,7 +37,7 @@ performance implementation details.
 ### Windows
 
 ```powershell
-.\gradlew.bat build
+./gradlew.bat build
 ```
 
 ### Linux and macOS
@@ -53,7 +53,7 @@ The compiled mod and sources JARs are written to `build/libs/`.
 Use the Fabric Loom development client with:
 
 ```powershell
-.\gradlew.bat runClient
+./gradlew.bat runClient
 ```
 
 On Linux or macOS:
